@@ -28,58 +28,68 @@
 
 %% Terms
 
--type tm()      :: str() | file()
-                 | boolean() | cnd()
-                 | tup() | proj()
-                 | nl() | cons() | head() | tail()
-                 | var() | abs_nat() | abs_for() | app()
-                 | fix().
+-type tm()       :: var() | abs_nat() | abs_for() | app()
+                  | fix() | zipwith()
+                  | boolean() | cnd()
+                  | str() | file()
+                  | nl() | cons() | isnil()
+                  | tup() | proj().
 
--type str()     :: {str, string()}.
+-type var()      :: {var, Name::string()}.
 
--type file()    :: {file, string()}.
+-type abs_nat()  :: {abs_nat, Sign::ctx(), Body::tm()}.
 
--type cnd()     :: {cnd, IfTerm::tm(), ThenTerm::tm(), ElseTerm::tm()}.
-
--type tup()     :: {tup, [tm()]}.
-
--type proj()    :: {proj, Tuple::tm(), I::pos_integer()}.
-
--type nl()      :: {nl, Type::tp()}.
-
--type cons()    :: {cons, Type::tp(), Head::tm(), Tail::tm()}.
-
--type head()    :: {head, Type::tp(), List::tm()}.
-
--type tail()    :: {tail, Type::tp(), List::tm()}.
-
--type var()     :: {var, Name::string()}.
-
--type abs_nat() :: {abs_nat, Sign::ctx(), Body::tm()}.
-
--type abs_for() :: {abs_for, Sign::ctx(), RetTp::tp(), Lang::lang(),
+-type abs_for()  :: {abs_for, Sign::ctx(), RetTp::tp(), Lang::lang(),
                              Body::binary()}.
 
--type lang()    :: bash | octave | perl | python | r.
+-type app()      :: {app, Left::tm(), Right:: arg_map()}.
 
--type app()     :: {app, Left::tm(), Right:: arg_map()}.
+-type fix()      :: {fix, Term::tm()}.
 
--type arg_map() :: #{ string() => tm() }.
+-type zipwith()  :: {zipwith, ArgLst::[string()], Term::tm()}.
 
--type fix()     :: {fix, Term::tm()}.
+-type cnd()      :: {cnd, IfTerm::tm(), ThenTerm::tm(), ElseTerm::tm()}.
+
+-type str()      :: {str, string()}.
+
+-type file()     :: {file, string()}.
+
+-type nl()       :: {nl, Type::tp()}.
+
+-type cons()     :: {cons, Type::tp(), Head::tm(), Tail::tm()}.
+
+-type isnil()    :: {isnil, Type::tp(), Term::tm()}.
+
+-type tup()      :: {tup, [tm()]}.
+
+-type proj()     :: {proj, Tuple::tm(), I::pos_integer()}.
 
 
 %% Types
 
+-type tp()       :: tabs_nat() | tabs_for()
+                  | tbool | tstr | tfile | tlst() | ttup().
+
+-type utp()      :: tbool | tstr | tfile | tlst() | ttup().
+
+-type ttup()     :: {ttup, [tp()]}.
+
+-type tlst()     :: {tlst, tp()}.
+
+-type tabs_nat() :: {tabs, nat, From::ctx(), To::tp()}.
+
+-type tabs_for() :: {tabs, for, From::uctx(), To::utp()}.
+
+%% Auxiliaries
+
+-type lang()    :: bash | octave | perl | python | r.
+
+-type arg_map() :: #{ string() => tm() }.
+
 -type ctx()     :: #{ string => tp() }.
 
--type tp()      :: tstr | tfile | tbool | tlst() | ttup() | tabs().
+-type uctx()    :: #{ string => utp() }.
 
--type ttup()    :: {ttup, [tp()]}.
-
--type tlst()    :: {tlst, tp()}.
-
--type tabs()    :: {tabs, From::ctx(), To::tp()}.
 
 %%====================================================================
 %% Derived Forms
@@ -125,12 +135,34 @@ subst( X, S, {var, X} )   ->
 subst( _, _, T={var, _} ) ->
   T;
 
-
-
 subst( X, S, {app, Left, Right} ) ->
   Left1 = subst( X, S, Left ),
   Right1 = maps:map( fun( _, V ) -> subst( X, S, V ) end, Right ),
-  {app, Left1, Right1}.
+  {app, Left1, Right1};
+
+subst( X, S, T={abs_nat, Sign, Body} ) ->
+  
+  BindLst = maps:keys( Sign ),
+
+  T1 = case lists:member( X, BindLst ) of
+         true  -> rename( X, T );
+         false -> T
+       end,
+
+  FreeSet = free_vars( S ),
+
+  F = fun( Y, Tin ) ->
+        case sets:is_element( Y, FreeSet ) of
+          false -> Tin;
+          true  -> rename( Y, Tin )
+        end
+      end,
+
+  T2 = lists:foldl( F, T1, BindLst ),
+
+  {abs_nat, Sign2, Body2} = T2,
+
+  {abs_nat, Sign2, subst( X, S, Body2)}.
 
 
 %% @doc Extracts the set of variable names occurring free in a given term `T`.
@@ -156,10 +188,29 @@ free_vars( {app, Left, Right} ) ->
   sets:union( FvLeft, FvRight );
 
 free_vars( {fix, T} ) ->
-  free_vars( T );
+  free_vars( T ).
 
-free_vars( _ ) ->
-  sets:new().
+%% @doc consistently renames all occurrences of a given name `X` in the term
+%%      `T`.
+
+-spec rename( X::string(), T::tm() ) -> tm().
+
+rename( X, T ) ->
+
+  F = fun
+
+        ren( X, {var, X}, Fresh ) ->
+          {var, Fresh};
+
+        ren( _, T={var, _}, _ ) ->
+          T;
+
+        ren( X, {app, Left, Right}, Fresh ) ->
+          Left1 = ren( X, Left, Fresh ),
+          Right1 = maps:map( fun( _, T ) -> ren( X, T, Fresh ) end, Right ),
+          {app, Left1, Right1};
+
+        ren( X, {abs_nat, } )
 
 
 %%====================================================================
