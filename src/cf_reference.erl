@@ -20,7 +20,7 @@
 
 -module( cf_reference ).
 
--export( [as/2, let_bind/4, subst/3, free_vars/1] ).
+-export( [as/2, let_bind/4, subst/3, free_vars/1, rename/2] ).
 
 -ifdef( TEST ).
 -include_lib( "eunit/include/eunit.hrl" ).
@@ -726,5 +726,16 @@ projection_is_neutral_to_substitution_test() ->
   S = {var, "y"},
   T2 = subst( "x", S, T1 ),
   ?assertEqual( {proj, 1, S}, T2 ).
+
+
+%% Type Inference
+
+type_of_var_is_looked_up_in_context_test() ->
+  ?assertEqual( tbool, type_of( {var, "x"}, #{ "x" => tbool } ) ).
+
+type_of_foreign_abstraction_is_identical_to_declared_type_test() ->
+  T1 = {abs_for, #{ "a" => tbool }, tbool, bash, "blub"},
+  ?assertEqual( tbool, type_of( T1, #{} ) ).
+
 
 -endif.
