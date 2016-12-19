@@ -48,21 +48,21 @@
 
 -type app()      :: {app, Left::tm(), Right:: arg_map()}.
 
--type fix()      :: {fix, Term::tm()}.
+-type fix()      :: {fix, Tm::tm()}.
 
--type zipwith()  :: {zipwith, ArgLst::[string()], Term::tm()}.
+-type zipwith()  :: {zipwith, ArgLst::[string()], Tm::tm()}.
 
--type cnd()      :: {cnd, IfTerm::tm(), ThenTerm::tm(), ElseTerm::tm()}.
+-type cnd()      :: {cnd, IfTm::tm(), ThenTm::tm(), ElseTm::tm()}.
 
 -type str()      :: {str, string()}.
 
 -type file()     :: {file, string()}.
 
--type nl()       :: {nl, Type::tp()}.
+-type nl()       :: {nl, Tp::tp()}.
 
--type cons()     :: {cons, Type::tp(), Head::tm(), Tail::tm()}.
+-type cons()     :: {cons, Tp::tp(), Head::tm(), Tail::tm()}.
 
--type isnil()    :: {isnil, Type::tp(), Term::tm()}.
+-type isnil()    :: {isnil, Tp::tp(), Tm::tm()}.
 
 -type tup()      :: {tup, [tm()]}.
 
@@ -115,6 +115,28 @@ as( Tm, Tp ) ->
 let_bind( X, S, T, Ctx ) ->
   {app, {abs_nat, #{ X => type_of( S, Ctx ) }, T}, #{ X => S }}.
   
+
+%%====================================================================
+%% Evaluation
+%%====================================================================
+
+
+%%====================================================================
+%% Type System
+%%====================================================================
+
+%% @doc Infers the type of a term `T` by applying the inversion lemma.
+
+-spec type_of( T::tm(), Ctx::ctx() ) -> tp().
+
+type_of( {var, X}, Ctx ) ->
+  #{ X := Tp } = Ctx,
+  Tp;
+
+type_of( {abs_for, _, RetTp, _, _}, _Ctx ) ->
+  RetTp.
+
+
 %%====================================================================
 %% Substitution
 %%====================================================================
@@ -129,11 +151,6 @@ subst( X, S, {var, X} )   ->
 
 subst( _, _, T={var, _} ) ->
   T;
-
-subst( X, S, {app, Left, Right} ) ->
-  Left1 = subst( X, S, Left ),
-  Right1 = maps:map( fun( _, V ) -> subst( X, S, V ) end, Right ),
-  {app, Left1, Right1};
 
 subst( X, S, T={abs_nat, Sign, _Body} ) ->
   
@@ -157,7 +174,48 @@ subst( X, S, T={abs_nat, Sign, _Body} ) ->
 
   {abs_nat, Sign2, Body2} = T2,
 
-  {abs_nat, Sign2, subst( X, S, Body2)}.
+  {abs_nat, Sign2, subst( X, S, Body2 )};
+
+subst( _, _, T={abs_for, _, _, _, _} ) ->
+  T;
+
+subst( X, S, {app, Left, Right} ) ->
+  Left1 = subst( X, S, Left ),
+  Right1 = maps:map( fun( _, V ) -> subst( X, S, V ) end, Right ),
+  {app, Left1, Right1};
+
+subst( X, S, {fix, T1} ) ->
+  {fix, subst( X, S, T1 )};
+
+subst( X, S, {zipwith, ArgLst, T1} ) ->
+  {zipwith, ArgLst, subst( X, S, T1 )};
+
+subst( _, _, T ) when is_boolean( T ) ->
+  T;
+
+subst( X, S, {cnd, IfTm, ThenTm, ElseTm} ) ->
+  {cnd, subst( X, S, IfTm ), subst( X, S, ThenTm ), subst( X, S, ElseTm )};
+
+subst( _, _, T={str, _} ) ->
+  T;
+
+subst( _, _, T={file, _} ) ->
+  T;
+
+subst( _, _, T={nl, _} ) ->
+  T;
+
+subst( X, S, {cons, Tp, T1, T2} ) ->
+  {cons, Tp, subst( X, S, T1 ), subst( X, S, T2 )};
+
+subst( X, S, {isnil, Tp, T1} ) ->
+  {isnil, Tp, subst( X, S, T1 )};
+
+subst( X, S, {tup, ElemLst} ) ->
+  {tup, [subst( X, S, Elem ) || Elem <- ElemLst]};
+
+subst( X, S, {proj, I, T1} ) ->
+  {proj, I, subst( X, S, T1 )}.
 
 
 %% @doc Extracts the set of variable names occurring free in a given term `T`.
@@ -185,10 +243,7 @@ free_vars( {fix, T} ) ->
 free_vars( {zipwith, _, T} ) ->
   free_vars( T );
 
-free_vars( true ) ->
-  sets:new();
-
-free_vars( false ) ->
+free_vars( T )when is_boolean( T ) ->
   sets:new();
 
 free_vars( {cnd, A, B, C} ) ->
@@ -217,7 +272,7 @@ free_vars( {proj, _, T} ) ->
 
 
 %% @doc consistently renames all occurrences of a given name `X` in the term
-%%      `T`.
+%%      `T` replacing it with a fresh name.
 
 -spec rename( X::string(), T::tm() ) -> tm().
 
@@ -265,11 +320,8 @@ rename( X, T ) ->
                     end,
           {zipwith, ArgLst1, F( Y, S, Fresh )};
 
-        F( _, true, _ ) ->
-          true;
-
-        F( _, false, _ ) ->
-          false;
+        F( _, S, _ ) when is_boolean( S ) ->
+          S;
 
         F( Y, {cnd, If, Then, Else}, Fresh ) ->
           {cnd, F( Y, If, Fresh ), F( Y, Then, Fresh ), F( Y, Else, Fresh )};
@@ -305,22 +357,6 @@ rename( X, T ) ->
   Fresh = Basename++fresh_name(),
 
   Renm( X, T, Fresh ).
-
-
-%%====================================================================
-%% Type Inference
-%%====================================================================
-
-%% @doc Infers the type of a term `T` by applying the inversion lemma.
-
--spec type_of( T::tm(), Ctx::ctx() ) -> tp().
-
-type_of( {var, X}, Ctx ) ->
-  #{ X := Tp } = Ctx,
-  Tp;
-
-type_of( {abs_for, _, RetTp, _, _}, _Ctx ) ->
-  RetTp.
 
 
 %%====================================================================
@@ -558,5 +594,137 @@ proj_is_neutral_to_renaming_test() ->
   ?assertMatch( {proj, 1, {var, _}}, T2 ),
   ?assertNotEqual( T1, T2 ),
   ?assertEqual( T1, rename( "a", T1 ) ).
+
+
+%% Substitution
+
+substitution_leaves_unconcerned_untouched_in_var_test() ->
+  T1 = {var, "x"},
+  T2 = subst( "y", {var, "a"}, T1 ),
+  ?assertEqual( T1, T2 ).
+
+substitution_alters_concerned_var_test() ->
+  T1 = {var, "x"},
+  S = {fix, {var, "a"}},
+  T2 = subst( "x", S, T1 ),
+  ?assertEqual( S, T2 ).
+
+substitution_alters_free_var_in_native_abstraction_test() ->
+  T1 = {abs_nat, #{ "y" => tbool }, {var, "x"}},
+  S = {abs_nat, #{ "z" => tbool }, {app, {var, "z"}, #{ "a" => {var, "w"}}}},
+  T2 = subst( "x", S, T1 ),
+  ?assertEqual( {abs_nat, #{ "y" => tbool },
+                          {abs_nat, #{ "z" => tbool },
+                                    {app, {var, "z"},
+                                          #{ "a" => {var, "w"}}}}}, T2 ).
+
+substitution_leaves_bound_vars_unaltered_test() ->
+  T1 = {abs_nat, #{ "x" => tbool }, {var, "x"}},
+  S = {var, "y"},
+  T2 = subst( "x", S, T1 ),
+  {abs_nat, Sign, {var, X}} = T2,
+  ?assertMatch( #{ X := tbool}, Sign ).
+
+substitution_is_capture_avoiding_test() ->
+  T1 = {abs_nat, #{ "z" => tbool }, {var, "x"}},
+  S = {var, "z"},
+  T2 = subst( "x", S, T1 ),
+  {abs_nat, Sign, {var, Z2}} = T2,
+  [Z1] = maps:keys( Sign ),
+  ?assertNotEqual( Z1, Z2 ).
+
+substitution_leaves_foreign_abstractions_untouched_test() ->
+  T1 = {abs_for, #{ "a" => tbool }, tbool, bash, "blub"},
+  S = {var, "z"},
+  T2 = subst( "a", S, T1 ),
+  ?assertEqual( T1, T2 ).
+
+substitution_is_delegated_to_left_in_app_test() ->
+  T1 = {app, {var, "x"}, #{ "a" => {var, "y"} }},
+  S = {var, "z"},
+  T2 = subst( "x", S, T1 ),
+  ?assertEqual( {app, {var, "z"}, #{ "a" => {var, "y"} }}, T2 ).
+
+substitution_is_delegated_to_right_in_app_test() ->
+  T1 = {app, {var, "x"}, #{ "a" => {var, "y"} }},
+  S = {var, "z"},
+  T2 = subst( "y", S, T1 ),
+  ?assertEqual( {app, {var, "x"}, #{ "a" => {var, "z"} }}, T2 ).
+
+fix_is_neutral_to_substitution_test() ->
+  T1 = {fix, {var, "x"}},
+  S = {var, "y"},
+  T2 = subst( "x", S, T1 ),
+  ?assertEqual( {fix, S}, T2 ).
+
+zipwith_is_neutral_to_substitution_test() ->
+  T1 = {zipwith, ["a"], {var, "x"}},
+  S = {var, "y"},
+  T2 = subst( "x", S, T1 ),
+  ?assertEqual( {zipwith, ["a"], S}, T2 ).
+
+substitution_leaves_true_unaltered_test() ->
+  ?assertEqual( true, subst( "x", {var, "y"}, true ) ).
+
+substitution_leaves_false_unaltered_test() ->
+  ?assertEqual( false, subst( "x", {var, "y"}, false ) ).
+
+substitution_is_delegated_to_if_in_cnd_test() ->
+  T1 = {cnd, {var, "x"}, {var, "y"}, {var, "z"}},
+  S = {var, "a"},
+  T2 = subst( "x", S, T1 ),
+  ?assertEqual( {cnd, S, {var, "y"}, {var, "z"}}, T2 ).
+
+substitution_is_delegated_to_then_in_cnd_test() ->
+  T1 = {cnd, {var, "x"}, {var, "y"}, {var, "z"}},
+  S = {var, "a"},
+  T2 = subst( "y", S, T1 ),
+  ?assertEqual( {cnd, {var, "x"}, S, {var, "z"}}, T2 ).
+
+substitution_is_delegated_to_else_in_cnd_test() ->
+  T1 = {cnd, {var, "x"}, {var, "y"}, {var, "z"}},
+  S = {var, "a"},
+  T2 = subst( "z", S, T1 ),
+  ?assertEqual( {cnd, {var, "x"}, {var, "y"}, S}, T2 ).
+
+substitution_leaves_str_unaltered_test() ->
+  ?assertEqual( {str, "blub"}, subst( "x", {var, "y"}, {str, "blub"} ) ).
+
+substitution_leaves_file_unaltered_test() ->
+  ?assertEqual( {file, "blub"}, subst( "x", {var, "y"}, {file, "blub"} ) ).
+
+substitution_leaves_nil_unaltered_test() ->
+  ?assertEqual( {nl, tbool}, subst( "x", {var, "y"}, {nl, tbool} ) ).
+
+substitution_is_delegated_to_head_in_cons_test() ->
+  T1 = {cons, tbool, {var, "x"}, {cons, tbool, {var, "y"}, {nl, tbool}}},
+  S = {var, "z"},
+  T2 = subst( "x", S, T1 ),
+  ?assertEqual( {cons, tbool, S, {cons, tbool, {var, "y"}, {nl, tbool}}}, T2 ).
+
+substitution_is_delegated_to_tail_in_cons_test() ->
+  T1 = {cons, tbool, {var, "x"}, {cons, tbool, {var, "y"}, {nl, tbool}}},
+  S = {var, "z"},
+  T2 = subst( "y", S, T1 ),
+  ?assertEqual( {cons, tbool, {var, "x"}, {cons, tbool, S, {nl, tbool}}}, T2 ).
+
+isnil_is_neutral_to_substitution_test() ->
+  T1 = {isnil, tbool, {var, "x"}},
+  S = {var, "y"},
+  T2 = subst( "x", S, T1 ),
+  ?assertEqual( {isnil, tbool, S}, T2 ),
+  ?assertEqual( T1, subst( "a", S, T1 ) ).
+
+substitution_is_delegated_to_tuple_elements_test() ->
+  T1 = {tup, [{var, "x"}]},
+  S = {var, "y"},
+  T2 = subst( "x", S, T1 ),
+  ?assertEqual( {tup, [S]}, T2 ).
+
+projection_is_neutral_to_substitution_test() ->
+  T1 = {proj, 1, {var, "x"}},
+  S = {var, "y"},
+  T2 = subst( "x", S, T1 ),
+  ?assertEqual( {proj, 1, S}, T2 ).
 
 -endif.
