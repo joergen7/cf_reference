@@ -269,7 +269,31 @@ rename( X, T ) ->
           true;
 
         F( _, false, _ ) ->
-          false
+          false;
+
+        F( Y, {cnd, If, Then, Else}, Fresh ) ->
+          {cnd, F( Y, If, Fresh ), F( Y, Then, Fresh ), F( Y, Else, Fresh )};
+
+        F( _, S={str, _}, _ ) ->
+          S;
+
+        F( _, S={file, _}, _ ) ->
+          S;
+
+        F( _, S={nl, _}, _) ->
+          S;
+
+        F( Y, {cons, Tp, S1, S2}, Fresh ) ->
+          {cons, Tp, F( Y, S1, Fresh ), F( Y, S2, Fresh )};
+
+        F( Y, {isnil, Tp, S}, Fresh ) ->
+          {isnil, Tp, F( Y, S, Fresh )};
+
+        F( Y, {tup, ElemLst}, Fresh ) ->
+          {tup, [F( Y, Elem, Fresh ) || Elem <- ElemLst]};
+
+        F( Y, {proj, I, S}, Fresh ) ->
+          {proj, I, F( Y, S, Fresh )}
 
       end,
 
@@ -383,6 +407,7 @@ proj_is_neutral_to_free_vars_test() ->
   T = {proj, 1, {tup, [{var, "x"}]}},
   ?assert( sets:is_element( "x", free_vars( T ) ) ).
 
+
 %% Alpha Renaming
 
 renaming_leaves_unconcerned_var_untouched_test() ->
@@ -412,18 +437,18 @@ renaming_alters_signature_of_foreign_abstraction_test() ->
   ?assertMatch( {abs_for, #{}, tbool, bash, "blub"}, T2 ),
   ?assertNotEqual( T1, T2 ).
 
-renaming_leaves_unconcerned_signature_of_foreign_abstraction_untouched_test() ->
+renaming_leaves_unconcerned_untouched_in_foreign_abstraction_test() ->
   T1 = {abs_for, #{ "x" => tbool }, tbool, bash, "blub"},
   T2 = rename( "y", T1 ),
   ?assertEqual( {abs_for, #{ "x" => tbool }, tbool, bash, "blub"}, T2 ).
 
-renaming_is_delegated_to_left_of_app_test() ->
+renaming_is_delegated_to_left_in_app_test() ->
   T1 = {app, {var, "x"}, #{ "a" => {var, "y"} }},
   T2 = rename( "x", T1 ),
   ?assertMatch( {app, {var, _}, #{ "a" := {var, "y"} }}, T2 ),
   ?assertNotEqual( T1, T2 ).
 
-renaming_is_delegated_to_right_of_app_test() ->
+renaming_is_delegated_to_right_in_app_test() ->
   T1 = {app, {var, "x"}, #{ "a" => {var, "y"} }},
   T2 = rename( "y", T1 ),
   ?assertMatch( {app, {var, "x"}, #{ "a" := {var, _} }}, T2 ),
@@ -433,7 +458,8 @@ fix_is_neutral_to_renaming_test() ->
   T1 = {fix, {var, "x"}},
   T2 = rename( "x", T1 ),
   ?assertMatch( {fix, {var, _}}, T2 ),
-  ?assertNotEqual( T1, T2 ).
+  ?assertNotEqual( T1, T2 ),
+  ?assertEqual( T1, rename( "a", T1 ) ).
   
 renaming_alters_signature_of_zipwith_test() ->
   T1 = {zipwith, ["x"], {var, "y"}},
@@ -447,10 +473,90 @@ renaming_alters_body_of_zipwith_test() ->
   ?assertMatch( {zipwith, ["x"], {var, _}}, T2 ),
   ?assertNotEqual( T1, T2 ).
 
+renaming_leaves_unconcerned_untouched_in_zipwith_test() ->
+  T1 = {zipwith, ["x"], {var, "y"}},
+  T2 = rename( "a", T1 ),
+  ?assertEqual( T1, T2 ).
+
 renaming_leaves_true_unaltered_test() ->
   ?assertEqual( true, rename( "x", true ) ).
 
 renaming_leaves_false_unaltered_test() ->
   ?assertEqual( false, rename( "x", false ) ).
+
+renaming_is_delegated_to_if_in_cnd_test() ->
+  T1 = {cnd, {var, "x"}, {var, "y"}, {var, "z"}},
+  T2 = rename( "x", T1 ),
+  ?assertMatch( {cnd, {var, _}, {var, "y"}, {var, "z"}}, T2 ),
+  ?assertNotEqual( T1, T2 ).
+
+renaming_is_delegated_to_then_in_cnd_test() ->
+  T1 = {cnd, {var, "x"}, {var, "y"}, {var, "z"}},
+  T2 = rename( "y", T1 ),
+  ?assertMatch( {cnd, {var, "x"}, {var, _}, {var, "z"}}, T2 ),
+  ?assertNotEqual( T1, T2 ).
+
+renaming_is_delegated_to_else_in_cnd_test() ->
+  T1 = {cnd, {var, "x"}, {var, "y"}, {var, "z"}},
+  T2 = rename( "z", T1 ),
+  ?assertMatch( {cnd, {var, "x"}, {var, "y"}, {var, _}}, T2 ),
+  ?assertNotEqual( T1, T2 ).
+
+renaming_leaves_unconcerned_untouched_in_cnd_test() ->
+  T1 = {cnd, {var, "x"}, {var, "y"}, {var, "z"}},
+  T2 = rename( "a", T1 ),
+  ?assertEqual( {cnd, {var, "x"}, {var, "y"}, {var, "z"}}, T2 ).
+
+renaming_leaves_str_unaltered_test() ->
+  ?assertEqual( {str, "blub"}, rename( "x", {str, "blub"} ) ).
+
+renaming_leaves_file_unaltered_test() ->
+  ?assertEqual( {file, "blub"}, rename( "x", {file, "blub"} ) ).
+
+renaming_leaves_nil_unaltered_test() ->
+  ?assertEqual( {nl, tbool}, rename( "x", {nl, tbool} ) ).
+
+renaming_is_delegated_to_head_in_cons_test() ->
+  T1 = {cons, tbool, {var, "x"}, {cons, tbool, {var, "y"}, {nl, tbool}}},
+  T2 = rename( "x", T1 ),
+  ?assertMatch( {cons, tbool, {var, _}, {cons, tbool, {var, "y"}, {nl, tbool}}},
+                T2 ),
+  ?assertNotEqual( T1, T2 ).
+
+renaming_is_delegated_to_tail_in_cons_test() ->
+  T1 = {cons, tbool, {var, "x"}, {cons, tbool, {var, "y"}, {nl, tbool}}},
+  T2 = rename( "y", T1 ),
+  ?assertMatch( {cons, tbool, {var, "x"}, {cons, tbool, {var, _}, {nl, tbool}}},
+                T2 ),
+  ?assertNotEqual( T1, T2 ).
+
+renaming_leaves_unconcerned_untouched_in_cons_test() ->
+  T1 = {cons, tbool, {var, "x"}, {cons, tbool, {var, "y"}, {nl, tbool}}},
+  T2 = rename( "a", T1 ),
+  ?assertEqual( {cons, tbool, {var, "x"}, {cons, tbool,
+                                                 {var, "y"},
+                                                 {nl, tbool}}},
+                T2 ).
+
+isnil_is_neutral_to_renaming_test() ->
+  T1 = {isnil, tbool, {var, "x"}},
+  T2 = rename( "x", T1 ),
+  ?assertMatch( {isnil, tbool, {var, _}}, T2 ),
+  ?assertNotEqual( T1, T2 ),
+  ?assertEqual( T1, rename( "a", T1 ) ).
+
+renaming_is_delegated_to_elements_in_tuple_test() ->
+  T1 = {tup, [{var, "x"}]},
+  T2 = rename( "x", T1 ),
+  ?assertMatch( {tup, [{var, _}]}, T2 ),
+  ?assertNotEqual( T1, T2 ),
+  ?assertEqual( T1, rename( "a", T1 ) ).
+
+proj_is_neutral_to_renaming_test() ->
+  T1 = {proj, 1, {var, "x"}},
+  T2 = rename( "x", T1 ),
+  ?assertMatch( {proj, 1, {var, _}}, T2 ),
+  ?assertNotEqual( T1, T2 ),
+  ?assertEqual( T1, rename( "a", T1 ) ).
 
 -endif.
