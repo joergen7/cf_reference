@@ -22,6 +22,10 @@
 
 -export( [as/2, let_bind/4, subst/3, free_vars/1] ).
 
+-ifdef( TEST ).
+-include_lib( "eunit/include/eunit.hrl" ).
+-endif.
+
 %%====================================================================
 %% Abstract Syntax
 %%====================================================================
@@ -62,7 +66,7 @@
 
 -type tup()      :: {tup, [tm()]}.
 
--type proj()     :: {proj, Tuple::tm(), I::pos_integer()}.
+-type proj()     :: {proj, I::pos_integer(), Tuple::tm()}.
 
 
 %% Types
@@ -111,15 +115,6 @@ as( Tm, Tp ) ->
 let_bind( X, S, T, Ctx ) ->
   {app, {abs_nat, #{ X => type_of( S, Ctx ) }, T}, #{ X => S }}.
   
-
-%% @doc Generates a fresh name.
-
--spec fresh_name() -> string().
-
-fresh_name() ->
-  N = erlang:unique_integer( [positive, monotonic] ),
-  [$$|integer_to_list( N )].
-
 %%====================================================================
 %% Substitution
 %%====================================================================
@@ -140,7 +135,7 @@ subst( X, S, {app, Left, Right} ) ->
   Right1 = maps:map( fun( _, V ) -> subst( X, S, V ) end, Right ),
   {app, Left1, Right1};
 
-subst( X, S, T={abs_nat, Sign, Body} ) ->
+subst( X, S, T={abs_nat, Sign, _Body} ) ->
   
   BindLst = maps:keys( Sign ),
 
@@ -169,12 +164,6 @@ subst( X, S, T={abs_nat, Sign, Body} ) ->
 
 -spec free_vars( T::tm() ) -> sets:set( string() ).
 
-free_vars( {tup, L} ) ->
-  sets:union( [free_vars( X ) || X <- L] );
-
-free_vars( {cons, _, Head, Tail} ) ->
-  sets:union( free_vars( Head ), free_vars( Tail ) );
-
 free_vars( {var, X} ) ->
   sets:add_element( X, sets:new() );
 
@@ -182,13 +171,50 @@ free_vars( {abs_nat, Sign, T1} ) ->
   F = fun( N, Fv ) -> sets:del_element( N, Fv ) end,
   lists:foldl( F, free_vars( T1 ), maps:keys( Sign ) );
 
+free_vars( {abs_for, _, _, _, _} ) ->
+  sets:new();
+
 free_vars( {app, Left, Right} ) ->
   FvLeft = free_vars( Left ),
   FvRight = sets:union( [free_vars( X ) || X <- maps:values( Right )] ),
   sets:union( FvLeft, FvRight );
 
 free_vars( {fix, T} ) ->
+  free_vars( T );
+
+free_vars( {zipwith, _, T} ) ->
+  free_vars( T );
+
+free_vars( true ) ->
+  sets:new();
+
+free_vars( false ) ->
+  sets:new();
+
+free_vars( {cnd, A, B, C} ) ->
+  sets:union( [free_vars( A ), free_vars( B ), free_vars( C )] );
+
+free_vars( {str, _} ) ->
+  sets:new();
+
+free_vars( {file, _} ) ->
+  sets:new();
+
+free_vars( {nl, _} ) ->
+  sets:new();
+
+free_vars( {cons, _, Head, Tail} ) ->
+  sets:union( free_vars( Head ), free_vars( Tail ) );
+
+free_vars( {isnil, _, T} ) ->
+  free_vars( T );
+
+free_vars( {tup, L} ) ->
+  sets:union( [free_vars( X ) || X <- L] );
+
+free_vars( {proj, _, T} ) ->
   free_vars( T ).
+
 
 %% @doc consistently renames all occurrences of a given name `X` in the term
 %%      `T`.
@@ -197,20 +223,64 @@ free_vars( {fix, T} ) ->
 
 rename( X, T ) ->
 
-  F = fun
+  Renm = fun
 
-        ren( X, {var, X}, Fresh ) ->
+        F( Y, {var, Y}, Fresh ) ->
           {var, Fresh};
 
-        ren( _, T={var, _}, _ ) ->
-          T;
+        F( _, S={var, _}, _ ) ->
+          S;
 
-        ren( X, {app, Left, Right}, Fresh ) ->
-          Left1 = ren( X, Left, Fresh ),
-          Right1 = maps:map( fun( _, T ) -> ren( X, T, Fresh ) end, Right ),
+        F( Y, {abs_nat, Sign, Body}, Fresh ) ->
+          Sign1 = case maps:is_key( Y, Sign ) of
+                    false -> Sign;
+                    true  ->
+                      #{ Y := Tp} = Sign,
+                      maps:put( Fresh, Tp, maps:remove( Y, Sign ) )
+                  end,
+          Body1 = F( Y, Body, Fresh ),
+          {abs_nat, Sign1, Body1};
+
+        F( Y, {abs_for, Sign, RetTp, Lang, Body}, Fresh ) ->
+          Sign1 = case maps:is_key( Y, Sign ) of
+                    false -> Sign;
+                    true  ->
+                      #{ Y := Tp } = Sign,
+                      maps:put( Fresh, Tp, maps:remove( Y, Sign ) )
+                  end,
+          {abs_for, Sign1, RetTp, Lang, Body};
+
+        F( Y, {app, Left, Right}, Fresh ) ->
+          Left1 = F( Y, Left, Fresh ),
+          Right1 = maps:map( fun( _, S ) -> F( Y, S, Fresh ) end, Right ),
           {app, Left1, Right1};
 
-        ren( X, {abs_nat, } )
+        F( Y, {fix, S}, Fresh ) ->
+          {fix, F( Y, S, Fresh )};
+
+        F( Y, {zipwith, ArgLst, S}, Fresh ) ->
+          ArgLst1 = case lists:member( Y, ArgLst ) of
+                      false -> ArgLst;
+                      true  -> [Fresh|lists:delete( Y, ArgLst )]
+                    end,
+          {zipwith, ArgLst1, F( Y, S, Fresh )};
+
+        F( _, true, _ ) ->
+          true;
+
+        F( _, false, _ ) ->
+          false
+
+      end,
+
+  Basename = case string:chr( X, $$ ) of
+               0 -> X;
+               I -> lists:sublist( X, I-1 )
+             end,
+
+  Fresh = Basename++fresh_name(),
+
+  Renm( X, T, Fresh ).
 
 
 %%====================================================================
@@ -228,3 +298,159 @@ type_of( {var, X}, Ctx ) ->
 type_of( {abs_for, _, RetTp, _, _}, _Ctx ) ->
   RetTp.
 
+
+%%====================================================================
+%% Internal Functions
+%%====================================================================
+
+
+%% @doc Generates a fresh name.
+
+-spec fresh_name() -> string().
+
+fresh_name() ->
+  N = erlang:unique_integer( [positive, monotonic] ),
+  [$$|integer_to_list( N )].
+
+
+
+%%====================================================================
+%% Unit Tests
+%%====================================================================
+
+-ifdef( TEST ).
+
+%% Free Variables
+
+var_is_free_test() ->
+  ?assert( sets:is_element( "x", free_vars( {var, "x"} ) ) ).
+
+identity_is_a_combinator_test() ->
+  T = {abs_nat, #{ "x" => tbool }, {var, "x"}},
+  ?assertEqual( 0, sets:size( free_vars( T ) ) ).
+
+constant_var_fn_has_free_var_test() ->
+  T = {abs_nat, #{ "x" => tbool }, {var, "y"}},
+  ?assert( sets:is_element( "y", free_vars( T ) ) ).
+
+foreign_abstraction_has_no_free_vars_test() ->
+  T = {abs_for, #{}, tbool, bash, <<"blub">>},
+  ?assertEqual( 0, sets:size( free_vars( T ) ) ).
+
+app_gives_union_of_left_and_right_free_vars_test() ->
+  Left = {var, "x"},
+  Right = #{"y" => {var, "y"}, "z" => {var, "z"}},
+  T = {app, Left, Right},
+  ?assertEqual( 3, sets:size( free_vars( T ) ) ).
+
+fix_is_neutral_to_free_vars_test() ->
+  ?assert( sets:is_element( "x", free_vars( {fix, {var, "x"}} ) ) ).
+
+zipwith_is_neutral_to_free_vars_test() ->
+  ?assert( sets:is_element( "x", free_vars( {zipwith, ["x"], {var, "x"}} ) ) ).
+
+true_has_no_free_vars_test() ->
+  ?assertEqual( 0, sets:size( free_vars( true ) ) ).
+
+false_has_no_free_vars_test() ->
+  ?assertEqual( 0, sets:size( free_vars( false ) ) ).
+
+cnd_gives_union_of_if_then_and_else_free_vars_test() ->
+  T = {cnd, {var, "a"}, {var, "b"}, {var, "c"}},
+  ?assertEqual( 3, sets:size( free_vars( T ) ) ).
+
+str_has_no_free_vars_test() ->
+  ?assertEqual( 0, sets:size( free_vars( {str, "blub"} ) ) ).
+
+file_has_no_free_vars_test() ->
+  ?assertEqual( 0, sets:size( free_vars( {file, "blub"} ) ) ).
+
+nl_has_no_free_vars_test() ->
+  ?assertEqual( 0, sets:size( free_vars( {nl, tbool} ) ) ).
+
+cons_gives_union_of_head_and_tail_free_vars_test() ->
+  T = {cons, tbool, {var, "a"}, {cons, tbool, {var, "b"}, {nl, tbool}}},
+  ?assertEqual( 2, sets:size( free_vars( T ) ) ).
+
+isnil_is_neutral_to_free_vars_test() ->
+  ?assert( sets:is_element( "x", free_vars( {isnil, tbool, {var, "x"}} ) ) ).
+
+tuple_gives_union_of_elements_free_vars_test() ->
+  T = {tup, [{var, "x"}, {var, "y"}, {var, "z"}]},
+  ?assertEqual( 3, sets:size( free_vars( T ) ) ).
+
+proj_is_neutral_to_free_vars_test() ->
+  T = {proj, 1, {tup, [{var, "x"}]}},
+  ?assert( sets:is_element( "x", free_vars( T ) ) ).
+
+%% Alpha Renaming
+
+renaming_leaves_unconcerned_var_untouched_test() ->
+  ?assertEqual( {var, "y"}, rename( "x", {var, "y"} ) ).
+
+renaming_alters_concerned_var_test() ->
+  T1 = {var, "x"},
+  T2 = rename( "x", T1 ),
+  ?assertMatch( {var, _}, T2 ),
+  ?assertNotEqual( T1, T2 ).
+
+renaming_alters_native_abstraction_test() ->
+  T1 = {abs_nat, #{ "x" => tbool }, {var, "y"}},
+  T2 = rename( "x", T1 ),
+  ?assertMatch( {abs_nat, #{}, {var, "y"}}, T2 ),
+  ?assertNotEqual( T1, T2 ).
+
+renaming_alters_native_abstraction_body_test() ->
+  T1 = {abs_nat, #{ "x" => tbool }, {var, "y"}},
+  T2 = rename( "y", T1 ),
+  ?assertMatch( {abs_nat, #{ "x" := tbool }, {var, _}}, T2 ),
+  ?assertNotEqual( T1, T2 ).
+
+renaming_alters_signature_of_foreign_abstraction_test() ->
+  T1 = {abs_for, #{ "x" => tbool }, tbool, bash, "blub"},
+  T2 = rename( "x", T1 ),
+  ?assertMatch( {abs_for, #{}, tbool, bash, "blub"}, T2 ),
+  ?assertNotEqual( T1, T2 ).
+
+renaming_leaves_unconcerned_signature_of_foreign_abstraction_untouched_test() ->
+  T1 = {abs_for, #{ "x" => tbool }, tbool, bash, "blub"},
+  T2 = rename( "y", T1 ),
+  ?assertEqual( {abs_for, #{ "x" => tbool }, tbool, bash, "blub"}, T2 ).
+
+renaming_is_delegated_to_left_of_app_test() ->
+  T1 = {app, {var, "x"}, #{ "a" => {var, "y"} }},
+  T2 = rename( "x", T1 ),
+  ?assertMatch( {app, {var, _}, #{ "a" := {var, "y"} }}, T2 ),
+  ?assertNotEqual( T1, T2 ).
+
+renaming_is_delegated_to_right_of_app_test() ->
+  T1 = {app, {var, "x"}, #{ "a" => {var, "y"} }},
+  T2 = rename( "y", T1 ),
+  ?assertMatch( {app, {var, "x"}, #{ "a" := {var, _} }}, T2 ),
+  ?assertNotEqual( T1, T2 ).
+
+fix_is_neutral_to_renaming_test() ->
+  T1 = {fix, {var, "x"}},
+  T2 = rename( "x", T1 ),
+  ?assertMatch( {fix, {var, _}}, T2 ),
+  ?assertNotEqual( T1, T2 ).
+  
+renaming_alters_signature_of_zipwith_test() ->
+  T1 = {zipwith, ["x"], {var, "y"}},
+  T2 = rename( "x", T1 ),
+  ?assertMatch( {zipwith, [_], {var, "y"}}, T2 ),
+  ?assertNotEqual( T1, T2 ).
+
+renaming_alters_body_of_zipwith_test() ->
+  T1 = {zipwith, ["x"], {var, "y"}},
+  T2 = rename( "y", T1 ),
+  ?assertMatch( {zipwith, ["x"], {var, _}}, T2 ),
+  ?assertNotEqual( T1, T2 ).
+
+renaming_leaves_true_unaltered_test() ->
+  ?assertEqual( true, rename( "x", true ) ).
+
+renaming_leaves_false_unaltered_test() ->
+  ?assertEqual( false, rename( "x", false ) ).
+
+-endif.
