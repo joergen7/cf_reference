@@ -140,7 +140,7 @@ type_of( {var, X}, Ctx ) ->
   % check if type is declared in context
   case Ctx of
     #{ X := Tp } -> Tp;
-    _            -> throw( {evar, basename( X )} )
+    _            -> throw( {eundef, var, basename( X )} )
   end;
 
 type_of( {abs_nat, Sign, Body}, Ctx ) ->
@@ -166,7 +166,7 @@ type_of( {app, Left, Right}, Ctx ) ->
         RightTp = type_of( RightTm, Ctx ),
         if
           LeftTp =/= RightTp ->
-            throw( {eapp, {type_mismatch, Name, LeftTp, RightTp}} );
+            throw( {etype_mismatch, app, {Name, LeftTp, RightTp}} );
           true -> ok
         end
       end,
@@ -180,22 +180,24 @@ type_of( {app, Left, Right}, Ctx ) ->
           % check if types match
           lists:foreach( F, LeftNameLst ),
           Tret;
-        _ -> throw( {eapp, {arg_unused, sets:to_list( UnusedSet )}} )
+        _ -> throw( {earg_unused, app, sets:to_list( UnusedSet )} )
       end;
-    _ -> throw( {eapp, {arg_unbound, sets:to_list( UnboundSet )}} )
+    _ -> throw( {earg_unbound, app, sets:to_list( UnboundSet )} )
   end;
 
 
 type_of( {fix, T1}, Ctx ) ->
+
+  {tabs, Tau, Sign, Tret} = type_of( T1, Ctx ),
+
   % TODO: check if signature corresponds to Tret
   % TODO: check if wrapper abstraction is native
   % TODO: check if target abstraction is native
-  {tabs, _, _, Tret} = type_of( T1, Ctx ),
+
   Tret;
 
 type_of( {zipwith, ArgLst, T1}, Ctx ) ->
-  % TODO: check if every arg is also an arg in T1
-
+  
   F = fun( Arg, Tp ) ->
         case lists:member( Arg, ArgLst ) of
           true  -> {tlst, Tp};
@@ -208,15 +210,39 @@ type_of( {zipwith, ArgLst, T1}, Ctx ) ->
   Sign1 = maps:map( F, Sign ),
   Tret1 = {tlst, Tret},
 
-  {tabs, Tau, Sign1, Tret1};
+  % check if every arg is also an arg in T1
+  ArgLst1 = maps:keys( Sign ),
+  Pred = fun( Arg ) ->
+           case lists:member( Arg, ArgLst1 ) of
+             true  -> false;
+             false -> true
+           end
+         end,
+
+  case lists:filter( Pred, ArgLst ) of
+    []       -> {tabs, Tau, Sign1, Tret1};
+    UndefLst -> throw( {earg_undefined, zipwith, UndefLst} )
+  end;
 
 type_of( T, _ ) when is_boolean( T ) ->
   tbool;
 
-type_of( {cnd, _, ThenTm, _}, Ctx ) ->
-  % TODO: check if IfTm is of type bool
-  % TODO: check if ElseTm is of correct type
-  type_of( ThenTm, Ctx );
+type_of( {cnd, IfTm, ThenTm, ElseTm}, Ctx ) ->
+
+  IfTp = type_of( IfTm, Ctx ),
+  ThenTp = type_of( ThenTm, Ctx ),
+  ElseTp = type_of( ElseTm, Ctx ),
+
+  % check if IfTm is of type bool
+  case IfTp of
+    tbool ->
+      % check if ElseTm is of correct type
+      case ElseTp of
+        ThenTp -> ThenTp;
+        _      -> throw( {ethenelse_type, cnd, {ThenTp, ElseTp}} )
+      end;
+    _ -> throw( {eiftype, cnd, IfTp} )
+  end;
 
 type_of( {str, _}, _ ) ->
   tstr;
@@ -227,22 +253,44 @@ type_of( {file, _}, _ ) ->
 type_of( {nl, Tp}, _ ) ->
   {tlst, Tp};
 
-type_of( {cons, Tp, _Hd, _Tl}, _Ctx ) ->
-  % TODO: check type of head
-  % TODO: check type of tail
-  {tlst, Tp};
+type_of( {cons, Tp, Hd, Tl}, Ctx ) ->
 
-type_of( {isnil, _Tp, _T1}, _Ctx ) ->
-  % TODO: check type of T1
-  tbool;
+  HdTp = type_of( Hd, Ctx ),
+  TlTp = type_of( Tl, Ctx ),
+
+  % check type of head
+  case HdTp of
+    Tp ->
+      % check type of tail
+      case TlTp of
+        {tlst, Tp} -> {tlst, Tp};
+        _         -> throw( {etail_type, cons, {{tlst, Tp}, TlTp}} )
+      end;
+    _  -> throw( {ehead_type, cons, {Tp, HdTp}} )
+  end;
+
+type_of( {isnil, Tp, T1}, Ctx ) ->
+  
+  Tp1 = type_of( T1, Ctx ),
+
+  % check if declared type matches list type
+  case Tp1 of
+    {tlst, Tp} -> tbool;
+    _          -> throw( {elst_type, isnil, {{tlst, Tp}, Tp1}} )
+  end;
 
 type_of( {tup, ElemLst}, Ctx ) ->
   {ttup, [type_of( Elem, Ctx ) || Elem <- ElemLst]};
 
 type_of( {proj, I, T1}, Ctx ) ->
-  % TODO: check if index out of bounds
+
   {ttup, TypeLst} = type_of( T1, Ctx ),
-  lists:nth( I, TypeLst ).
+
+  % check if index out of bounds
+  case I > length( TypeLst ) orelse I =< 0 of
+    true  -> throw( {ebad_index, proj, I} );
+    false -> lists:nth( I, TypeLst )
+  end.
 
 
 
@@ -848,7 +896,7 @@ type_of_var_is_looked_up_in_context_test() ->
   ?assertEqual( tbool, type_of( {var, "x"}, #{ "x" => tbool } ) ).
 
 var_not_in_ctx_untypable_test() ->
-  ?assertThrow( {evar, "x"}, type_of( {var, "x"}, #{} ) ).
+  ?assertThrow( {eundef, var, "x"}, type_of( {var, "x"}, #{} ) ).
 
 type_of_foreign_abstraction_is_identical_to_declared_type_test() ->
   T1 = {abs_for, #{ "a" => tbool }, tbool, bash, "blub"},
@@ -866,17 +914,17 @@ type_of_app_is_return_type_of_left_test() ->
 unbound_arg_is_untypable_test() ->
   Sign = #{ "a" => tbool, "b" => tbool },
   T1 = {app, {abs_nat, Sign, {str, "blub"}}, #{ "a" => true }},
-  ?assertThrow( {eapp, {arg_unbound, ["b"]}}, type_of( T1, #{} ) ).
+  ?assertThrow( {earg_unbound, app, ["b"]}, type_of( T1, #{} ) ).
 
 unused_arg_is_untypable_test() ->
   Sign = #{ "a" => tbool },
   T1 = {app, {abs_nat, Sign, {str, "blub"}}, #{ "a" => true, "b" => true }},
-  ?assertThrow( {eapp, {arg_unused, ["b"]}}, type_of( T1, #{} ) ).
+  ?assertThrow( {earg_unused, app, ["b"]}, type_of( T1, #{} ) ).
 
 mismatching_types_app_is_untypable_test() ->
   Abs = {abs_nat, #{ "a" => tbool }, {str, "blub"}},
   T1 = {app, Abs, #{ "a" => {str, "blub"}}},
-  Throw = {eapp, {type_mismatch, "a", tbool, tstr}},
+  Throw = {etype_mismatch, app, {"a", tbool, tstr}},
   ?assertThrow( Throw, type_of( T1, #{} ) ).
 
 type_of_fix_is_derivable_test() ->
@@ -887,9 +935,8 @@ type_of_fix_is_derivable_test() ->
 asymmetric_fix_is_untypable_test() ->
   T1 = {fix, {abs_nat, #{ "f" => {tabs, nat, #{ "a" => tbool}, tstr} },
                        {abs_nat, #{ "a" => tbool }, false}}},
-  Throw = {efix, {asymmetric,
-                 {tabs, nat, #{ "a" => tbool}, tstr},
-                 {tabs, nat, #{ "a" => tbool}, tbool}}},
+  Throw = {easymmetric, fix, {{tabs, nat, #{ "a" => tbool}, tstr},
+                              {tabs, nat, #{ "a" => tbool}, tbool}}},
   ?assertThrow( Throw, type_of( T1, #{} ) ).
 
 fix_with_nonnative_wrapper_is_untypable_test() ->
@@ -897,13 +944,13 @@ fix_with_nonnative_wrapper_is_untypable_test() ->
                        {tabs, nat, #{ "a" => tbool}, tstr},
                        bash,
                        "blub"}},
-  Throw = {efix, {nonnative, wrapper}},
+  Throw = {enonnative, fix, wrapper},
   ?assertThrow( Throw, type_of( T1, #{} ) ).
 
 fix_with_nonnative_target_is_untypable_test() ->
   T1 = {fix, {abs_nat, #{ "f" => {tabs, nat, #{ "a" => tbool}, tstr} },
                        {abs_for, #{ "a" => tbool }, tstr, bash, "blub"}}},
-  Throw = {efix, {nonnative, target}},
+  Throw = {enonnative, target},
   ?assertThrow( Throw, type_of( T1, #{} ) ).
 
 type_of_zipwith_is_derivable_test() ->
@@ -915,7 +962,7 @@ type_of_zipwith_is_derivable_test() ->
 unbound_arg_in_zipwith_is_untypable_test() ->
   T12 = {abs_nat, #{ "a" => tbool, "b" => tbool }, {str, "blub"}},
   T1 = {zipwith, ["c"], T12},
-  Throw = {ezipwith, {arg_undefined, ["c"]}},
+  Throw = {earg_undefined, zipwith, ["c"]},
   ?assertThrow( Throw, type_of( T1, #{} ) ).
 
 type_of_true_is_tbool_test() ->
@@ -930,11 +977,11 @@ type_of_cnd_is_then_else_type_test() ->
 
 if_term_not_tbool_is_untypable_test() ->
   T1 = {cnd, {str, "lala"}, {str, "blub"}, {str, "bla"}},
-  ?assertThrow( {ecnd, {iftype, tstr}}, type_of( T1, #{} ) ).
+  ?assertThrow( {eiftype, cnd, tstr}, type_of( T1, #{} ) ).
 
 then_and_else_term_type_mismatch_untypable_test() ->
-  T1 = {cnd, true, {str, "blub"}, {tfile, "bla"}},
-  ?assertThrow( {ecnd, {thenelse_types, tstr, tfile}}, type_of( T1, #{} ) ).
+  T1 = {cnd, true, {str, "blub"}, {file, "bla"}},
+  ?assertThrow( {ethenelse_type, cnd, {tstr, tfile}}, type_of( T1, #{} ) ).
 
 type_of_str_is_tstr_test() ->
   ?assertEqual( tstr, type_of( {str, "blub"}, #{} ) ).
@@ -951,18 +998,18 @@ type_of_cons_is_list_test() ->
 
 cons_head_type_mismatch_is_untypable_test() ->
   T1 = {cons, tstr, true, {nl, tstr}},
-  ?assertThrow( {econs, {head_type, tstr, tbool}}, type_of( T1, #{} ) ).
+  ?assertThrow( {ehead_type, cons, {tstr, tbool}}, type_of( T1, #{} ) ).
 
 cons_tail_type_mismatch_is_untypable_test() ->
   T1 = {cons, tstr, {str, "blub"}, {nl, tbool}},
-  ?assertThrow( {econs, {tail_type, tstr, tbool}}, type_of( T1, #{} ) ).
+  ?assertThrow( {etail_type, cons, {{tlst, tstr}, {tlst, tbool}}}, type_of( T1, #{} ) ).
 
 type_of_isnil_is_tbool_test() ->
   ?assertEqual( tbool, type_of( {isnil, tstr, {nl, tstr}}, #{} ) ).
 
 isnil_type_mismatch_is_untypable_test() ->
   T1 = {isnil, tstr, {nl, tbool}},
-  ?assertThrow( {eisnil, {type, tstr, tbool}}, type_of( T1, #{} ) ).
+  ?assertThrow( {elst_type, isnil, {{tlst, tstr}, {tlst, tbool}}}, type_of( T1, #{} ) ).
 
 type_of_tuple_is_tup_of_element_types_test() ->
   T1 = {tup, [true, {str, "blub"}]},
@@ -974,14 +1021,14 @@ type_of_proj_is_type_of_corresponding_element_test() ->
 
 proj_index_too_large_is_untypable_test() ->
   T1 = {proj, 3, {tup, [true, {str, "blub"}]}},
-  ?assertThrow( {eproj, {bad_idx, 3}}, type_of( T1, #{} ) ).
+  ?assertThrow( {ebad_index, proj, 3}, type_of( T1, #{} ) ).
 
 proj_index_zero_is_untypable_test() ->
   T1 = {proj, 0, {tup, [true, {str, "blub"}]}},
-  ?assertThrow( {eproj, {bad_idx, 0}}, type_of( T1, #{} ) ).
+  ?assertThrow( {ebad_index, proj, 0}, type_of( T1, #{} ) ).
 
 proj_index_negative_is_untypable_test() ->
   T1 = {proj, -1, {tup, [true, {str, "blub"}]}},
-  ?assertThrow( {eproj, {bad_idx, -1}}, type_of( T1, #{} ) ).
+  ?assertThrow( {ebad_index, proj, -1}, type_of( T1, #{} ) ).
 
 -endif.
