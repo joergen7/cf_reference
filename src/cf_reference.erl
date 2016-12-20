@@ -20,7 +20,7 @@
 
 -module( cf_reference ).
 
--export( [as/2, let_bind/4, subst/3, free_vars/1, rename/2] ).
+-export( [as/2, let_bind/4, step/1, subst/3, free_vars/1, rename/2] ).
 
 -ifdef( TEST ).
 -include_lib( "eunit/include/eunit.hrl" ).
@@ -76,7 +76,7 @@
 
 -type utp()      :: tbool | tstr | tfile | tlst() | ttup().
 
--type ttup()     :: {ttup, [tp()]}.
+-type ttup()     :: {ttup, ElemLst::[tp()]}.
 
 -type tlst()     :: {tlst, tp()}.
 
@@ -120,6 +120,11 @@ let_bind( X, S, T, Ctx ) ->
 %% Evaluation
 %%====================================================================
 
+%% @doc Takes a single evaluation step.
+
+-spec step( tm() ) -> tm().
+
+step( _Tm ) -> error( nyi ).
 
 %%====================================================================
 %% Type System
@@ -133,8 +138,74 @@ type_of( {var, X}, Ctx ) ->
   #{ X := Tp } = Ctx,
   Tp;
 
-type_of( {abs_for, _, RetTp, _, _}, _Ctx ) ->
-  RetTp.
+type_of( {abs_nat, Sign, Body}, Ctx ) ->
+  Ctx1 = maps:merge( Ctx, Sign ),
+  {tabs, nat, Sign, type_of( Body, Ctx1 )};
+
+type_of( {abs_for, Sign, RetTp, _, _}, _Ctx ) ->
+  {tabs, for, Sign, RetTp};
+
+type_of( {app, Left, _Right}, Ctx ) ->
+  {tabs, _, _From, Tret} = type_of( Left, Ctx ),
+  % TODO: check if argument names match
+  % TODO: check if argument types match
+  Tret;
+
+type_of( {fix, T1}, Ctx ) ->
+  % TODO: check if signature corresponds to Tret
+  {tabs, _, _, Tret} = type_of( T1, Ctx ),
+  Tret;
+
+type_of( {zipwith, ArgLst, T1}, Ctx ) ->
+  % TODO: check if every arg is also an arg in T1
+
+  F = fun( Arg, Tp ) ->
+        case lists:member( Arg, ArgLst ) of
+          true  -> {tlst, Tp};
+          false -> Tp
+        end
+      end,
+
+  {tabs, Tau, Sign, Tret} = type_of( T1, Ctx ),
+
+  Sign1 = maps:map( F, Sign ),
+  Tret1 = {tlst, Tret},
+
+  {tabs, Tau, Sign1, Tret1};
+
+type_of( T, _ ) when is_boolean( T ) ->
+  tbool;
+
+type_of( {cnd, _, ThenTm, _}, Ctx ) ->
+  % TODO: check if IfTm is of type bool
+  % TODO: check if ElseTm is of correct type
+  type_of( ThenTm, Ctx );
+
+type_of( {str, _}, _ ) ->
+  tstr;
+
+type_of( {file, _}, _ ) ->
+  tfile;
+
+type_of( {nl, Tp}, _ ) ->
+  {tlst, Tp};
+
+type_of( {cons, Tp, _Hd, _Tl}, _Ctx ) ->
+  % TODO: check type of head
+  % TODO: check type of tail
+  {tlst, Tp};
+
+type_of( {isnil, _Tp, _T1}, _Ctx ) ->
+  % TODO: check type of T1
+  tbool;
+
+type_of( {tup, ElemLst}, Ctx ) ->
+  {ttup, [type_of( Elem, Ctx ) || Elem <- ElemLst]};
+
+type_of( {proj, I, T1}, Ctx ) ->
+  {ttup, TypeLst} = type_of( T1, Ctx ),
+  lists:nth( I, TypeLst ).
+
 
 
 %%====================================================================
@@ -735,7 +806,62 @@ type_of_var_is_looked_up_in_context_test() ->
 
 type_of_foreign_abstraction_is_identical_to_declared_type_test() ->
   T1 = {abs_for, #{ "a" => tbool }, tbool, bash, "blub"},
-  ?assertEqual( tbool, type_of( T1, #{} ) ).
+  ?assertEqual( {tabs, for, #{ "a" => tbool }, tbool}, type_of( T1, #{} ) ).
 
+type_of_native_abstraction_depends_on_sign_and_body_test() ->
+  T1 = {abs_nat, #{ "a" => tbool }, {var, "x"}},
+  ?assertEqual( {tabs, nat,  #{ "a" => tbool }, tstr},
+                type_of( T1, #{ "x" => tstr } ) ).
+
+type_of_app_is_return_type_of_left_test() ->
+  T1 = {app, {abs_nat, #{ "a" => tbool }, {str, "blub"}}, #{ "a" => true }},
+  ?assertEqual( tstr, type_of( T1, #{} ) ).
+
+type_of_fix_is_derivable_test() ->
+  T1 = {fix, {abs_nat, #{ "f" => {tabs, nat, #{ "a" => tbool}, tstr} },
+                       {abs_nat, #{ "a" => tbool }, {str, "blub"}}}},
+  ?assertEqual( {tabs, nat, #{ "a" => tbool}, tstr}, type_of( T1, #{} ) ).
+
+type_of_zipwith_is_derivable_test() ->
+  T12 = {abs_nat, #{ "a" => tbool, "b" => tbool }, {str, "blub"}},
+  T1 = {zipwith, ["a"], T12},
+  ?assertEqual( {tabs, nat,
+                       #{ "a" => {tlst, tbool}, "b" => tbool },
+                       {tlst, tstr}},
+                type_of( T1, #{} ) ).
+
+type_of_true_is_tbool_test() ->
+  ?assertEqual( tbool, type_of( true, #{} ) ).
+
+type_of_false_is_tbool_test() ->
+  ?assertEqual( tbool, type_of( false, #{} ) ).
+
+type_of_cnd_is_then_else_type_test() ->
+  T1 = {cnd, true, {str, "blub"}, {str, "bla"}},
+  ?assertEqual( tstr, type_of( T1, #{} ) ).
+
+type_of_str_is_tstr_test() ->
+  ?assertEqual( tstr, type_of( {str, "blub"}, #{} ) ).
+
+type_of_file_is_tstr_test() ->
+  ?assertEqual( tfile, type_of( {file, "blub"}, #{} ) ).
+
+type_of_nil_is_list_test() ->
+  ?assertEqual( {tlst, tstr}, type_of( {nl, tstr}, #{} ) ).
+
+type_of_cons_is_list_test() ->
+  T1 = {cons, tstr, {str, "blub"}, {nl, tstr}},
+  ?assertEqual( {tlst, tstr}, type_of( T1, #{} ) ).
+
+type_of_isnil_is_tbool_test() ->
+  ?assertEqual( tbool, type_of( {isnil, tstr, {nl, tstr}}, #{} ) ).
+
+type_of_tuple_is_tup_of_element_types_test() ->
+  T1 = {tup, [true, {str, "blub"}]},
+  ?assertEqual( {ttup, [tbool, tstr]}, type_of( T1, #{} ) ).
+
+type_of_proj_is_type_of_corresponding_element_test() ->
+  T1 = {proj, 2, {tup, [true, {str, "blub"}]}},
+  ?assertEqual( tstr, type_of( T1, #{} ) ).
 
 -endif.
