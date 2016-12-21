@@ -70,7 +70,7 @@
 
 -type proj()     :: {proj, I::pos_integer(), Tuple::tm()}.
 
--type fut()      :: {fut, Tp::utp(), X::string()}.
+-type fut()      :: {fut, Tp::utp(), K::pos_integer()}.
 
 
 %% Types
@@ -463,90 +463,132 @@ free_vars( {fut, _, _} ) ->
   sets:new().
 
 
-%% @doc consistently renames all occurrences of a given name `X` in the term
-%%      `T` replacing it with a fresh name.
+%% @doc Consistently renames all occurrences of a given name `X` in the term `T`
+%%      replacing it with a fresh name.
 
 -spec rename( X::string(), T::tm() ) -> tm().
 
 rename( X, T ) ->
+  Fresh = basename( X )++fresh_name(),
+  rename_term( X, T, Fresh ).
 
-  Renm = fun
 
-        F( Y, {var, Y}, Fresh ) ->
-          {var, Fresh};
+%% @doc Consistently renames all occurrences of a given name `X` in the term `T`
+%%      replacing it with the given fresh name `Fresh`.
 
-        F( _, S={var, _}, _ ) ->
-          S;
+-spec rename_term( X::string(), T::tm(), Fresh::string() ) -> tm().
 
-        F( Y, {abs_nat, Sign, Body}, Fresh ) ->
-          Sign1 = case maps:is_key( Y, Sign ) of
-                    false -> Sign;
-                    true  ->
-                      #{ Y := Tp} = Sign,
-                      maps:put( Fresh, Tp, maps:remove( Y, Sign ) )
-                  end,
-          Body1 = F( Y, Body, Fresh ),
-          {abs_nat, Sign1, Body1};
+rename_term( Y, {var, Y}, Fresh ) ->
+  {var, Fresh};
 
-        F( Y, {abs_for, Sign, RetTp, Lang, Body}, Fresh ) ->
-          Sign1 = case maps:is_key( Y, Sign ) of
-                    false -> Sign;
-                    true  ->
-                      #{ Y := Tp } = Sign,
-                      maps:put( Fresh, Tp, maps:remove( Y, Sign ) )
-                  end,
-          {abs_for, Sign1, RetTp, Lang, Body};
+rename_term( _, S={var, _}, _ ) ->
+  S;
 
-        F( Y, {app, Left, Right}, Fresh ) ->
-          Left1 = F( Y, Left, Fresh ),
-          Right1 = maps:map( fun( _, S ) -> F( Y, S, Fresh ) end, Right ),
-          {app, Left1, Right1};
+rename_term( Y, {abs_nat, Sign, Body}, Fresh ) ->
+  Sign1 = case maps:is_key( Y, Sign ) of
+            false -> Sign;
+            true  ->
+              #{ Y := Tp } = Sign,
+              maps:put( Fresh, rename_type( Y, Tp, Fresh ),
+                               maps:remove( Y, Sign ) )
+          end,
+  Body1 = rename_term( Y, Body, Fresh ),
+  {abs_nat, Sign1, Body1};
 
-        F( Y, {fix, S}, Fresh ) ->
-          {fix, F( Y, S, Fresh )};
+rename_term( Y, {abs_for, Sign, RetTp, Lang, Body}, Fresh ) ->
+  Sign1 = case maps:is_key( Y, Sign ) of
+            false -> Sign;
+            true  ->
+              #{ Y := Tp } = Sign,
+              maps:put( Fresh, Tp, maps:remove( Y, Sign ) )
+          end,
+  {abs_for, Sign1, RetTp, Lang, Body};
 
-        F( Y, {zipwith, Tp, ArgLst, S}, Fresh ) ->
-          ArgLst1 = case lists:member( Y, ArgLst ) of
-                      false -> ArgLst;
-                      true  -> [Fresh|lists:delete( Y, ArgLst )]
-                    end,
-          {zipwith, Tp, ArgLst1, F( Y, S, Fresh )};
+rename_term( Y, {app, Left, Right}, Fresh ) ->
+  Left1 = rename_term( Y, Left, Fresh ),
+  Right1 = maps:map( fun( _, S ) -> rename_term( Y, S, Fresh ) end, Right ),
+  {app, Left1, Right1};
 
-        F( _, S, _ ) when is_boolean( S ) ->
-          S;
+rename_term( Y, {fix, S}, Fresh ) ->
+  {fix, rename_term( Y, S, Fresh )};
 
-        F( Y, {cnd, If, Then, Else}, Fresh ) ->
-          {cnd, F( Y, If, Fresh ), F( Y, Then, Fresh ), F( Y, Else, Fresh )};
+rename_term( Y, {zipwith, Tp, ArgLst, S}, Fresh ) ->
+  ArgLst1 = case lists:member( Y, ArgLst ) of
+              false -> ArgLst;
+              true  -> [Fresh|lists:delete( Y, ArgLst )]
+            end,
+  {zipwith, rename_type( Y, Tp, Fresh ), ArgLst1, rename_term( Y, S, Fresh )};
 
-        F( _, S={str, _}, _ ) ->
-          S;
+rename_term( _, S, _ ) when is_boolean( S ) ->
+  S;
 
-        F( _, S={file, _}, _ ) ->
-          S;
+rename_term( Y, {cnd, If, Then, Else}, Fresh ) ->
+  {cnd, rename_term( Y, If, Fresh ),
+        rename_term( Y, Then, Fresh ),
+        rename_term( Y, Else, Fresh )};
 
-        F( _, S={nl, _}, _) ->
-          S;
+rename_term( _, S={str, _}, _ ) ->
+  S;
 
-        F( Y, {cons, Tp, S1, S2}, Fresh ) ->
-          {cons, Tp, F( Y, S1, Fresh ), F( Y, S2, Fresh )};
+rename_term( _, S={file, _}, _ ) ->
+  S;
 
-        F( Y, {isnil, Tp, S}, Fresh ) ->
-          {isnil, Tp, F( Y, S, Fresh )};
+rename_term( Y, {nl, Tp}, Fresh ) ->
+  {nl, rename_type( Y, Tp, Fresh )};
 
-        F( Y, {tup, ElemLst}, Fresh ) ->
-          {tup, [F( Y, Elem, Fresh ) || Elem <- ElemLst]};
+rename_term( Y, {cons, Tp, S1, S2}, Fresh ) ->
+  {cons, rename_type( Y, Tp, Fresh ),
+         rename_term( Y, S1, Fresh ),
+         rename_term( Y, S2, Fresh )};
 
-        F( Y, {proj, I, S}, Fresh ) ->
-          {proj, I, F( Y, S, Fresh )};
+rename_term( Y, {isnil, Tp, S}, Fresh ) ->
+  {isnil, rename_type( Y, Tp, Fresh ), rename_term( Y, S, Fresh )};
 
-        F( _, S={fut, _, _}, _ ) ->
-          S
+rename_term( Y, {tup, ElemLst}, Fresh ) ->
+  {tup, [rename_term( Y, Elem, Fresh ) || Elem <- ElemLst]};
 
+rename_term( Y, {proj, I, S}, Fresh ) ->
+  {proj, I, rename_term( Y, S, Fresh )};
+
+rename_term( _, S={fut, _, _}, _ ) ->
+  S.
+
+
+-spec rename_type( X::string(), Tp::tp(), Fresh::string() ) -> tp().
+
+rename_type( X, {tabs, nat, Sign, Tret}, Fresh ) ->
+
+  F = fun( _, Tp ) ->
+        rename_type( X, Tp, Fresh )
       end,
 
-  Fresh = basename( X )++fresh_name(),
+  Sign1 = maps:map( F, Sign ),
 
-  Renm( X, T, Fresh ).
+  Sign2 = case lists:member( X, maps:keys( Sign1 ) ) of
+            false -> Sign1;
+            true  ->
+              #{ X := Tp } = Sign1,
+              maps:put( Fresh, Tp, maps:remove( X, Sign1 ) )
+          end,
+
+  Tret1 = rename_type( X, Tret, Fresh ),
+
+  {tabs, nat, Sign2, Tret1};
+
+rename_type( _, tbool, _ ) ->
+  tbool;
+
+rename_type( _, tstr, _ ) ->
+  tstr;
+
+rename_type( _, tfile, _ ) ->
+  tfile;
+
+rename_type( X, {tlst, Tp1}, Fresh ) ->
+  {tlst, rename_type( X, Tp1, Fresh )};
+
+rename_type( X, {ttup, TpLst}, Fresh ) ->
+  {ttup, [rename_type( X, T, Fresh ) || T <- TpLst]}.
 
 
 %%====================================================================
@@ -651,158 +693,217 @@ futures_do_not_contain_free_vars_test() ->
 %% Alpha Renaming
 
 renaming_leaves_unconcerned_var_untouched_test() ->
-  ?assertEqual( {var, "y"}, rename( "x", {var, "y"} ) ).
+  ?assertEqual( {var, "y"}, rename_term( "x", {var, "y"}, "x$1" ) ).
 
 renaming_alters_concerned_var_test() ->
   T1 = {var, "x"},
-  T2 = rename( "x", T1 ),
-  ?assertMatch( {var, _}, T2 ),
-  ?assertNotEqual( T1, T2 ).
+  T2 = rename_term( "x", T1, "x$1" ),
+  ?assertEqual( {var, "x$1"}, T2 ).
 
-renaming_alters_native_abstraction_test() ->
+renaming_alters_name_in_signature_of_native_abstraction_test() ->
   T1 = {abs_nat, #{ "x" => tbool }, {var, "y"}},
-  T2 = rename( "x", T1 ),
-  ?assertMatch( {abs_nat, #{}, {var, "y"}}, T2 ),
-  ?assertNotEqual( T1, T2 ).
+  T2 = rename_term( "x", T1, "x$1" ),
+  ?assertEqual( {abs_nat, #{ "x$1" => tbool }, {var, "y"}}, T2 ).
 
-renaming_alters_native_abstraction_body_test() ->
+renaming_alters_type_in_signature_of_native_abstraction_test() ->
+  T1 = {abs_nat, #{ "x" => {tabs, nat, #{ "a" => tstr }, tbool} }, {var, "y"}},
+  T2 = rename_term( "a", T1, "a$1" ),
+  Texp = {abs_nat, #{ "x" => {tabs, nat, #{ "a$1" => tstr }, tbool} },
+                   {var, "y"}},
+  ?assertEqual( Texp, T2 ).
+
+renaming_alters_body_in_native_abstraction_test() ->
   T1 = {abs_nat, #{ "x" => tbool }, {var, "y"}},
-  T2 = rename( "y", T1 ),
-  ?assertMatch( {abs_nat, #{ "x" := tbool }, {var, _}}, T2 ),
-  ?assertNotEqual( T1, T2 ).
+  T2 = rename_term( "y", T1, "y$1" ),
+  ?assertEqual( {abs_nat, #{ "x" => tbool }, {var, "y$1"}}, T2 ).
 
-renaming_alters_signature_of_foreign_abstraction_test() ->
+renaming_alters_name_in_signature_of_foreign_abstraction_test() ->
   T1 = {abs_for, #{ "x" => tbool }, tbool, bash, "blub"},
-  T2 = rename( "x", T1 ),
-  ?assertMatch( {abs_for, #{}, tbool, bash, "blub"}, T2 ),
-  ?assertNotEqual( T1, T2 ).
+  T2 = rename_term( "x", T1, "x$1" ),
+  ?assertEqual( {abs_for, #{ "x$1" => tbool }, tbool, bash, "blub"}, T2 ).
 
 renaming_leaves_unconcerned_untouched_in_foreign_abstraction_test() ->
   T1 = {abs_for, #{ "x" => tbool }, tbool, bash, "blub"},
-  T2 = rename( "y", T1 ),
+  T2 = rename_term( "y", T1, "y$1" ),
   ?assertEqual( {abs_for, #{ "x" => tbool }, tbool, bash, "blub"}, T2 ).
 
 renaming_is_delegated_to_left_in_app_test() ->
   T1 = {app, {var, "x"}, #{ "a" => {var, "y"} }},
-  T2 = rename( "x", T1 ),
-  ?assertMatch( {app, {var, _}, #{ "a" := {var, "y"} }}, T2 ),
-  ?assertNotEqual( T1, T2 ).
+  T2 = rename_term( "x", T1, "x$1" ),
+  ?assertEqual( {app, {var, "x$1"}, #{ "a" => {var, "y"} }}, T2 ).
 
-renaming_is_delegated_to_right_in_app_test() ->
+renaming_is_delegated_to_value_in_right_of_app_test() ->
   T1 = {app, {var, "x"}, #{ "a" => {var, "y"} }},
-  T2 = rename( "y", T1 ),
-  ?assertMatch( {app, {var, "x"}, #{ "a" := {var, _} }}, T2 ),
-  ?assertNotEqual( T1, T2 ).
+  T2 = rename_term( "y", T1, "y$1" ),
+  ?assertEqual( {app, {var, "x"}, #{ "a" => {var, "y$1"} }}, T2 ).
+
+renaming_is_delegated_to_name_in_right_of_app_test() ->
+  T1 = {app, {var, "x"}, #{ "a" => {var, "y"} }},
+  T2 = rename_term( "a", T1, "a$1" ),
+  ?assertEqual( {app, {var, "x"}, #{ "a$1" => {var, "y"} }}, T2 ).
 
 fix_is_neutral_to_renaming_test() ->
   T1 = {fix, {var, "x"}},
-  T2 = rename( "x", T1 ),
-  ?assertMatch( {fix, {var, _}}, T2 ),
-  ?assertNotEqual( T1, T2 ),
-  ?assertEqual( T1, rename( "a", T1 ) ).
+  T2 = rename_term( "x", T1, "x$1" ),
+  ?assertEqual( {fix, {var, "x$1"}}, T2 ),
+  ?assertEqual( T1, rename_term( "a", T1, "a$1" ) ).
   
-renaming_alters_signature_of_zipwith_test() ->
+renaming_alters_arg_names_in_zipwith_test() ->
   T1 = {zipwith, tbool, ["x"], {var, "y"}},
-  T2 = rename( "x", T1 ),
-  ?assertMatch( {zipwith, tbool, [_], {var, "y"}}, T2 ),
-  ?assertNotEqual( T1, T2 ).
+  T2 = rename_term( "x", T1, "x$1" ),
+  ?assertEqual( {zipwith, tbool, ["x$1"], {var, "y"}}, T2 ).
 
-renaming_alters_body_of_zipwith_test() ->
+renaming_alters_term_in_zipwith_test() ->
   T1 = {zipwith, tbool, ["x"], {var, "y"}},
-  T2 = rename( "y", T1 ),
-  ?assertMatch( {zipwith, tbool, ["x"], {var, _}}, T2 ),
-  ?assertNotEqual( T1, T2 ).
+  T2 = rename_term( "y", T1, "y$1" ),
+  ?assertEqual( {zipwith, tbool, ["x"], {var, "y$1"}}, T2 ).
+
+renaming_alters_return_type_in_zipwith_test() ->
+  T1 = {zipwith, {tabs, nat, #{ "a" => tstr }, tbool}, ["x"], {var, "y"}},
+  T2 = rename_term( "a", T1, "a$1" ),
+  Texp = {zipwith, {tabs, nat, #{ "a$1" => tstr }, tbool}, ["x"], {var, "y"}},
+  ?assertEqual( Texp, T2 ).
 
 renaming_leaves_unconcerned_untouched_in_zipwith_test() ->
   T1 = {zipwith, tbool, ["x"], {var, "y"}},
-  T2 = rename( "a", T1 ),
+  T2 = rename_term( "a", T1, "a$1" ),
   ?assertEqual( T1, T2 ).
 
 renaming_leaves_true_unaltered_test() ->
-  ?assertEqual( true, rename( "x", true ) ).
+  ?assertEqual( true, rename_term( "x", true, "x$1" ) ).
 
 renaming_leaves_false_unaltered_test() ->
-  ?assertEqual( false, rename( "x", false ) ).
+  ?assertEqual( false, rename_term( "x", false, "x$1" ) ).
 
 renaming_is_delegated_to_if_in_cnd_test() ->
   T1 = {cnd, {var, "x"}, {var, "y"}, {var, "z"}},
-  T2 = rename( "x", T1 ),
-  ?assertMatch( {cnd, {var, _}, {var, "y"}, {var, "z"}}, T2 ),
-  ?assertNotEqual( T1, T2 ).
+  T2 = rename_term( "x", T1, "x$1" ),
+  ?assertEqual( {cnd, {var, "x$1"}, {var, "y"}, {var, "z"}}, T2 ).
 
 renaming_is_delegated_to_then_in_cnd_test() ->
   T1 = {cnd, {var, "x"}, {var, "y"}, {var, "z"}},
-  T2 = rename( "y", T1 ),
-  ?assertMatch( {cnd, {var, "x"}, {var, _}, {var, "z"}}, T2 ),
-  ?assertNotEqual( T1, T2 ).
+  T2 = rename_term( "y", T1, "y$1" ),
+  ?assertEqual( {cnd, {var, "x"}, {var, "y$1"}, {var, "z"}}, T2 ).
 
 renaming_is_delegated_to_else_in_cnd_test() ->
   T1 = {cnd, {var, "x"}, {var, "y"}, {var, "z"}},
-  T2 = rename( "z", T1 ),
-  ?assertMatch( {cnd, {var, "x"}, {var, "y"}, {var, _}}, T2 ),
-  ?assertNotEqual( T1, T2 ).
+  T2 = rename_term( "z", T1, "z$1" ),
+  ?assertEqual( {cnd, {var, "x"}, {var, "y"}, {var, "z$1"}}, T2 ).
 
 renaming_leaves_unconcerned_untouched_in_cnd_test() ->
   T1 = {cnd, {var, "x"}, {var, "y"}, {var, "z"}},
-  T2 = rename( "a", T1 ),
+  T2 = rename_term( "a", T1, "a$1" ),
   ?assertEqual( {cnd, {var, "x"}, {var, "y"}, {var, "z"}}, T2 ).
 
 renaming_leaves_str_unaltered_test() ->
-  ?assertEqual( {str, "blub"}, rename( "x", {str, "blub"} ) ).
+  ?assertEqual( {str, "blub"}, rename_term( "x", {str, "blub"}, "x$1" ) ).
 
 renaming_leaves_file_unaltered_test() ->
-  ?assertEqual( {file, "blub"}, rename( "x", {file, "blub"} ) ).
+  ?assertEqual( {file, "blub"}, rename_term( "x", {file, "blub"}, "x$1" ) ).
 
 renaming_leaves_nil_unaltered_test() ->
-  ?assertEqual( {nl, tbool}, rename( "x", {nl, tbool} ) ).
+  ?assertEqual( {nl, tbool}, rename_term( "x", {nl, tbool}, "x$1" ) ).
+
+renaming_alters_type_in_nil_test() ->
+  T1 = {nl, {tabs, nat, #{ "a" => tbool }, tstr}},
+  Texp = {nl, {tabs, nat, #{ "a$1" => tbool }, tstr}},
+  ?assertEqual( Texp, rename_term( "a", T1, "a$1" ) ).
 
 renaming_is_delegated_to_head_in_cons_test() ->
   T1 = {cons, tbool, {var, "x"}, {cons, tbool, {var, "y"}, {nl, tbool}}},
-  T2 = rename( "x", T1 ),
-  ?assertMatch( {cons, tbool, {var, _}, {cons, tbool, {var, "y"}, {nl, tbool}}},
-                T2 ),
-  ?assertNotEqual( T1, T2 ).
+  T2 = rename_term( "x", T1, "x$1" ),
+  Texp = {cons, tbool, {var, "x$1"}, {cons, tbool, {var, "y"}, {nl, tbool}}},
+  ?assertEqual( Texp, T2 ).
 
 renaming_is_delegated_to_tail_in_cons_test() ->
   T1 = {cons, tbool, {var, "x"}, {cons, tbool, {var, "y"}, {nl, tbool}}},
-  T2 = rename( "y", T1 ),
-  ?assertMatch( {cons, tbool, {var, "x"}, {cons, tbool, {var, _}, {nl, tbool}}},
-                T2 ),
-  ?assertNotEqual( T1, T2 ).
+  T2 = rename_term( "y", T1, "y$1" ),
+  Texp = {cons, tbool, {var, "x"}, {cons, tbool, {var, "y$1"}, {nl, tbool}}},
+  ?assertEqual( Texp, T2 ).
+
+renaming_alters_type_in_cons_test() ->
+  Tp = {tabs, nat, #{ "a" => tbool }, tstr},
+  Nil = {nl, Tp},
+  Head = {abs_nat, #{ "a" => tbool }, {str, "blub"}},
+  T1 = {cons, Tp, Head, Nil},
+  TpExp = {tabs, nat, #{ "a$1" => tbool }, tstr},
+  NilExp = {nl, TpExp},
+  HeadExp = {abs_nat, #{ "a$1" => tbool }, {str, "blub"}},
+  Texp = {cons, TpExp, HeadExp, NilExp},
+  ?assertEqual( Texp, rename_term( "a", T1, "a$1" ) ).
 
 renaming_leaves_unconcerned_untouched_in_cons_test() ->
   T1 = {cons, tbool, {var, "x"}, {cons, tbool, {var, "y"}, {nl, tbool}}},
-  T2 = rename( "a", T1 ),
-  ?assertEqual( {cons, tbool, {var, "x"}, {cons, tbool,
-                                                 {var, "y"},
-                                                 {nl, tbool}}},
-                T2 ).
+  T2 = rename_term( "a", T1, "a$1" ),
+  Texp = {cons, tbool, {var, "x"}, {cons, tbool, {var, "y"}, {nl, tbool}}},
+  ?assertEqual( Texp, T2 ).
 
-isnil_is_neutral_to_renaming_test() ->
+nenaming_alters_argument_in_isnil_test() ->
   T1 = {isnil, tbool, {var, "x"}},
-  T2 = rename( "x", T1 ),
-  ?assertMatch( {isnil, tbool, {var, _}}, T2 ),
-  ?assertNotEqual( T1, T2 ),
-  ?assertEqual( T1, rename( "a", T1 ) ).
+  T2 = rename_term( "x", T1, "x$1" ),
+  ?assertEqual( {isnil, tbool, {var, "x$1"}}, T2 ),
+  ?assertEqual( T1, rename_term( "a", T1, "a$1" ) ).
+
+renaming_alters_type_in_isnil_test() ->
+  T1 = {isnil, {tabs, nat, #{ "a" => tbool}, tstr}, {var, "x"}},
+  T2 = rename_term( "a", T1, "a$1" ),
+  Texp = {isnil, {tabs, nat, #{ "a$1" => tbool}, tstr}, {var, "x"}},
+  ?assertEqual( Texp, T2 ).
 
 renaming_is_delegated_to_elements_in_tuple_test() ->
   T1 = {tup, [{var, "x"}]},
-  T2 = rename( "x", T1 ),
-  ?assertMatch( {tup, [{var, _}]}, T2 ),
-  ?assertNotEqual( T1, T2 ),
-  ?assertEqual( T1, rename( "a", T1 ) ).
+  T2 = rename_term( "x", T1, "x$1" ),
+  ?assertEqual( {tup, [{var, "x$1"}]}, T2 ),
+  ?assertEqual( T1, rename_term( "a", T1, "a$1" ) ).
 
 proj_is_neutral_to_renaming_test() ->
   T1 = {proj, 1, {var, "x"}},
-  T2 = rename( "x", T1 ),
-  ?assertMatch( {proj, 1, {var, _}}, T2 ),
-  ?assertNotEqual( T1, T2 ),
-  ?assertEqual( T1, rename( "a", T1 ) ).
+  T2 = rename_term( "x", T1, "x$1" ),
+  ?assertEqual( {proj, 1, {var, "x$1"}}, T2 ),
+  ?assertEqual( T1, rename_term( "a", T1, "a$1" ) ).
 
 renaming_leaves_futures_untouched_test() ->
   T1 = {fut, tbool, 12},
-  ?assertEqual( T1, rename( "x", T1 ) ).
+  ?assertEqual( T1, rename_term( "x", T1, "x$1" ) ).
 
+renaming_leaves_boolean_type_untouched_test() ->
+  ?assertEqual( tbool, rename_type( "x", tbool, "x$1" ) ).
+
+renaming_leaves_str_type_untouched_test() ->
+  ?assertEqual( tstr, rename_type( "x", tstr, "x$1" ) ).
+
+renaming_leaves_file_type_untouched_test() ->
+  ?assertEqual( tfile, rename_type( "x", tfile, "x$1" ) ).
+
+renaming_alters_name_in_signature_of_native_abstraction_type_test() ->
+  Tp1 = {tabs, nat, #{ "a" => tbool }, tstr},
+  Tp2 = rename_type( "a", Tp1, "a$1" ),
+  Texp = {tabs, nat, #{ "a$1" => tbool }, tstr},
+  ?assertEqual( Texp, Tp2 ).
+
+renaming_alters_type_in_signature_of_native_abstraction_type_test() ->
+  Tp1 = {tabs, nat, #{ "a" => {tabs, nat, #{ "b" => tbool }, tstr} }, tstr},
+  Tp2 = rename_type( "b", Tp1, "b$1" ),
+  Texp = {tabs, nat, #{ "a" => {tabs, nat, #{ "b$1" => tbool }, tstr} }, tstr},
+  ?assertEqual( Texp, Tp2 ).
+
+renaming_alters_return_type_of_native_abstraction_type_test() ->
+  Tp1 = {tabs, nat, #{ "a" => tbool}, {tabs, nat, #{ "b" => tbool }, tstr}},
+  Tp2 = rename_type( "b", Tp1, "b$1" ),
+  Texp = {tabs, nat, #{ "a" => tbool }, {tabs, nat, #{ "b$1" => tbool }, tstr}},
+  ?assertEqual( Texp, Tp2 ).
+
+renaming_alters_argument_type_in_list_type_test() ->
+  Tp1 = {tlst, {tabs, nat, #{ "a" => tbool }, tstr}},
+  Tp2 = rename_type( "a", Tp1, "a$1" ),
+  Texp = {tlst, {tabs, nat, #{ "a$1" => tbool }, tstr}},
+  ?assertEqual( Texp, Tp2 ).
+
+renaming_alters_argument_type_in_tuple_type_test() ->
+  Tp1 = {ttup, [{tabs, nat, #{ "a" => tbool }, tstr}]},
+  Tp2 = rename_type( "a", Tp1, "a$1" ),
+  Texp = {ttup, [{tabs, nat, #{ "a$1" => tbool }, tstr}]},
+  ?assertEqual( Texp, Tp2 ).
 
 %% Substitution
 
