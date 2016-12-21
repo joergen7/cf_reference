@@ -190,11 +190,21 @@ type_of( {fix, T1}, Ctx ) ->
 
   {tabs, Tau, Sign, Tret} = type_of( T1, Ctx ),
 
-  % TODO: check if signature corresponds to Tret
-  % TODO: check if wrapper abstraction is native
-  % TODO: check if target abstraction is native
-
-  Tret;
+  % check if abstraction is native
+  case Tau of
+    for -> throw( {eforeign, fix, for} );
+    nat ->
+      % check if signature is singular
+      case maps:keys( Sign ) of
+        [X]     ->
+          % check if signature corresponds to Tret
+          case Sign of
+            #{ X := Tret } -> Tret;
+            #{ X := Tp }   -> throw( {easymmetric, fix, {Tp, Tret}} )
+          end;
+        NameLst -> throw( {enonsingular, fix, NameLst} )
+      end
+  end;
 
 type_of( {zipwith, ArgLst, T1}, Ctx ) ->
   
@@ -939,18 +949,19 @@ asymmetric_fix_is_untypable_test() ->
                               {tabs, nat, #{ "a" => tbool}, tbool}}},
   ?assertThrow( Throw, type_of( T1, #{} ) ).
 
-fix_with_nonnative_wrapper_is_untypable_test() ->
+fix_with_nonnative_abstraction_is_untypable_test() ->
   T1 = {fix, {abs_for, #{ "f" => {tabs, nat, #{ "a" => tbool}, tstr} },
                        {tabs, nat, #{ "a" => tbool}, tstr},
                        bash,
                        "blub"}},
-  Throw = {enonnative, fix, wrapper},
+  Throw = {eforeign, fix, for},
   ?assertThrow( Throw, type_of( T1, #{} ) ).
 
-fix_with_nonnative_target_is_untypable_test() ->
-  T1 = {fix, {abs_nat, #{ "f" => {tabs, nat, #{ "a" => tbool}, tstr} },
+fix_with_multiple_bindings_is_untypable_test() ->
+  T1 = {fix, {abs_nat, #{ "f" => {tabs, nat, #{ "a" => tbool}, tstr},
+                          "g" => tbool },
                        {abs_for, #{ "a" => tbool }, tstr, bash, "blub"}}},
-  Throw = {enonnative, target},
+  Throw = {enonsingular, fix, ["f", "g"]},
   ?assertThrow( Throw, type_of( T1, #{} ) ).
 
 type_of_zipwith_is_derivable_test() ->
