@@ -52,7 +52,7 @@
 
 -type fix()      :: {fix, Tm::tm()}.
 
--type zipwith()  :: {zipwith, ArgLst::[string()], Tm::tm()}.
+-type zipwith()  :: {zipwith, Tret::tp(), ArgLst::[string()], Tm::tm()}.
 
 -type cnd()      :: {cnd, IfTm::tm(), ThenTm::tm(), ElseTm::tm()}.
 
@@ -131,7 +131,11 @@ let_bind( X, S, T, Ctx ) ->
 
 -spec step( tm() ) -> tm().
 
-step( {var} ) -> error( nyi ).
+step( {var, _} ) ->
+  throw( enorule );
+
+step( {abs_nat, _, _} ) ->
+  throw( enorule ).
 
 %%====================================================================
 %% Type System
@@ -213,7 +217,7 @@ type_of( {fix, T1}, Ctx ) ->
       end
   end;
 
-type_of( {zipwith, ArgLst, T1}, Ctx ) ->
+type_of( {zipwith, DeclaredTp, ArgLst, T1}, Ctx ) ->
   
   F = fun( Arg, Tp ) ->
         case lists:member( Arg, ArgLst ) of
@@ -235,10 +239,15 @@ type_of( {zipwith, ArgLst, T1}, Ctx ) ->
            end
          end,
 
-  % check if every arg is also an arg in T1
-  case lists:filter( Pred, ArgLst ) of
-    []       -> {tabs, Tau, Sign1, Tret1};
-    UndefLst -> throw( {earg_undefined, zipwith, UndefLst} )
+  % check if abtraction return type matches declared type
+  case Tret of
+    DeclaredTp ->
+      % check if every arg is also an arg in T1
+      case lists:filter( Pred, ArgLst ) of
+        []       -> {tabs, Tau, Sign1, Tret1};
+        UndefLst -> throw( {earg_undefined, zipwith, UndefLst} )
+      end;
+    _ -> throw( {ereturn_type, zipwith, {DeclaredTp, Tret}} )
   end;
 
 type_of( T, _ ) when is_boolean( T ) ->
@@ -364,8 +373,8 @@ subst( X, S, {app, Left, Right} ) ->
 subst( X, S, {fix, T1} ) ->
   {fix, subst( X, S, T1 )};
 
-subst( X, S, {zipwith, ArgLst, T1} ) ->
-  {zipwith, ArgLst, subst( X, S, T1 )};
+subst( X, S, {zipwith, Tp, ArgLst, T1} ) ->
+  {zipwith, Tp, ArgLst, subst( X, S, T1 )};
 
 subst( _, _, T ) when is_boolean( T ) ->
   T;
@@ -420,7 +429,7 @@ free_vars( {app, Left, Right} ) ->
 free_vars( {fix, T} ) ->
   free_vars( T );
 
-free_vars( {zipwith, _, T} ) ->
+free_vars( {zipwith, _, _, T} ) ->
   free_vars( T );
 
 free_vars( T )when is_boolean( T ) ->
@@ -496,12 +505,12 @@ rename( X, T ) ->
         F( Y, {fix, S}, Fresh ) ->
           {fix, F( Y, S, Fresh )};
 
-        F( Y, {zipwith, ArgLst, S}, Fresh ) ->
+        F( Y, {zipwith, Tp, ArgLst, S}, Fresh ) ->
           ArgLst1 = case lists:member( Y, ArgLst ) of
                       false -> ArgLst;
                       true  -> [Fresh|lists:delete( Y, ArgLst )]
                     end,
-          {zipwith, ArgLst1, F( Y, S, Fresh )};
+          {zipwith, Tp, ArgLst1, F( Y, S, Fresh )};
 
         F( _, S, _ ) when is_boolean( S ) ->
           S;
@@ -598,7 +607,8 @@ fix_is_neutral_to_free_vars_test() ->
   ?assert( sets:is_element( "x", free_vars( {fix, {var, "x"}} ) ) ).
 
 zipwith_is_neutral_to_free_vars_test() ->
-  ?assert( sets:is_element( "x", free_vars( {zipwith, ["x"], {var, "x"}} ) ) ).
+  T1 = {zipwith, tbool, ["x"], {var, "x"}},
+  ?assert( sets:is_element( "x", free_vars( T1 ) ) ).
 
 true_has_no_free_vars_test() ->
   ?assertEqual( 0, sets:size( free_vars( true ) ) ).
@@ -692,19 +702,19 @@ fix_is_neutral_to_renaming_test() ->
   ?assertEqual( T1, rename( "a", T1 ) ).
   
 renaming_alters_signature_of_zipwith_test() ->
-  T1 = {zipwith, ["x"], {var, "y"}},
+  T1 = {zipwith, tbool, ["x"], {var, "y"}},
   T2 = rename( "x", T1 ),
-  ?assertMatch( {zipwith, [_], {var, "y"}}, T2 ),
+  ?assertMatch( {zipwith, tbool, [_], {var, "y"}}, T2 ),
   ?assertNotEqual( T1, T2 ).
 
 renaming_alters_body_of_zipwith_test() ->
-  T1 = {zipwith, ["x"], {var, "y"}},
+  T1 = {zipwith, tbool, ["x"], {var, "y"}},
   T2 = rename( "y", T1 ),
-  ?assertMatch( {zipwith, ["x"], {var, _}}, T2 ),
+  ?assertMatch( {zipwith, tbool, ["x"], {var, _}}, T2 ),
   ?assertNotEqual( T1, T2 ).
 
 renaming_leaves_unconcerned_untouched_in_zipwith_test() ->
-  T1 = {zipwith, ["x"], {var, "y"}},
+  T1 = {zipwith, tbool, ["x"], {var, "y"}},
   T2 = rename( "a", T1 ),
   ?assertEqual( T1, T2 ).
 
@@ -856,10 +866,10 @@ fix_is_neutral_to_substitution_test() ->
   ?assertEqual( {fix, S}, T2 ).
 
 zipwith_is_neutral_to_substitution_test() ->
-  T1 = {zipwith, ["a"], {var, "x"}},
+  T1 = {zipwith, tbool, ["a"], {var, "x"}},
   S = {var, "y"},
   T2 = subst( "x", S, T1 ),
-  ?assertEqual( {zipwith, ["a"], S}, T2 ).
+  ?assertEqual( {zipwith, tbool, ["a"], S}, T2 ).
 
 substitution_leaves_true_unaltered_test() ->
   ?assertEqual( true, subst( "x", {var, "y"}, true ) ).
@@ -996,14 +1006,20 @@ fix_with_multiple_bindings_is_untypable_test() ->
 
 type_of_zipwith_is_derivable_test() ->
   T12 = {abs_nat, #{ "a" => tbool, "b" => tbool }, {str, "blub"}},
-  T1 = {zipwith, ["a"], T12},
+  T1 = {zipwith, tstr, ["a"], T12},
   T2 = {tabs, nat, #{ "a" => {tlst, tbool}, "b" => tbool }, {tlst, tstr}},
   ?assertEqual( T2, type_of( T1, #{} ) ).
 
 unbound_arg_in_zipwith_is_untypable_test() ->
   T12 = {abs_nat, #{ "a" => tbool, "b" => tbool }, {str, "blub"}},
-  T1 = {zipwith, ["c"], T12},
+  T1 = {zipwith, tstr, ["c"], T12},
   Throw = {earg_undefined, zipwith, ["c"]},
+  ?assertThrow( Throw, type_of( T1, #{} ) ).
+
+mismatching_types_in_zipwith_is_untypable_test() ->
+  T12 = {abs_nat, #{ "a" => tbool, "b" => tbool }, {str, "blub"}},
+  T1 = {zipwith, tbool, ["a"], T12},
+  Throw = {ereturn_type, zipwith, {tbool, tstr}},
   ?assertThrow( Throw, type_of( T1, #{} ) ).
 
 type_of_true_is_tbool_test() ->
@@ -1075,5 +1091,11 @@ proj_index_negative_is_untypable_test() ->
 type_of_fut_is_declared_type_test() ->
   T1 = {fut, tbool, 12},
   ?assertEqual( tbool, type_of( T1, #{} ) ).
+
+
+%% Step Relation
+
+variable_is_no_redex_test() ->
+  ?assertThrow( enorule, step( {var, "x"} ) ).
 
 -endif.
