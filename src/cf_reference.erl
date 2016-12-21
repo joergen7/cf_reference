@@ -38,13 +38,14 @@
                   | boolean() | cnd()
                   | str() | file()
                   | nl() | cons() | isnil()
-                  | tup() | proj().
+                  | tup() | proj()
+                  | fut().
 
 -type var()      :: {var, Name::string()}.
 
 -type abs_nat()  :: {abs_nat, Sign::ctx(), Body::tm()}.
 
--type abs_for()  :: {abs_for, Sign::ctx(), RetTp::tp(), Lang::lang(),
+-type abs_for()  :: {abs_for, Sign::uctx(), RetTp::utp(), Lang::lang(),
                              Body::binary()}.
 
 -type app()      :: {app, Left::tm(), Right:: arg_map()}.
@@ -68,6 +69,8 @@
 -type tup()      :: {tup, [tm()]}.
 
 -type proj()     :: {proj, I::pos_integer(), Tuple::tm()}.
+
+-type fut()      :: {fut, Tp::utp(), X::string()}.
 
 
 %% Types
@@ -121,17 +124,21 @@ let_bind( X, S, T, Ctx ) ->
 %% Evaluation
 %%====================================================================
 
-%% @doc Takes a single evaluation step.
+%% @doc Takes a single evaluation step, applying any applicable rule except the
+%%      foreign function call rule. No special error checking is performed since
+%%      terms are expected to be well-formed and well-typable. If no evaluation
+%%      rules apply, a corresponding exception of type `throw` is generated.
 
 -spec step( tm() ) -> tm().
 
-step( _Tm ) -> error( nyi ).
+step( {var} ) -> error( nyi ).
 
 %%====================================================================
 %% Type System
 %%====================================================================
 
-%% @doc Infers the type of a term `T` by applying the inversion lemma.
+%% @doc Infers the type of a term `T` by applying the inversion lemma. If a term
+%%      is untypable, an exception of type `throw` is generated.
 
 -spec type_of( T::tm(), Ctx::ctx() ) -> tp().
 
@@ -220,7 +227,6 @@ type_of( {zipwith, ArgLst, T1}, Ctx ) ->
   Sign1 = maps:map( F, Sign ),
   Tret1 = {tlst, Tret},
 
-  % check if every arg is also an arg in T1
   ArgLst1 = maps:keys( Sign ),
   Pred = fun( Arg ) ->
            case lists:member( Arg, ArgLst1 ) of
@@ -229,6 +235,7 @@ type_of( {zipwith, ArgLst, T1}, Ctx ) ->
            end
          end,
 
+  % check if every arg is also an arg in T1
   case lists:filter( Pred, ArgLst ) of
     []       -> {tabs, Tau, Sign1, Tret1};
     UndefLst -> throw( {earg_undefined, zipwith, UndefLst} )
@@ -300,7 +307,10 @@ type_of( {proj, I, T1}, Ctx ) ->
   case I > length( TypeLst ) orelse I =< 0 of
     true  -> throw( {ebad_index, proj, I} );
     false -> lists:nth( I, TypeLst )
-  end.
+  end;
+
+type_of( {fut, Tp, _}, _ ) ->
+  Tp.
 
 
 
@@ -382,7 +392,10 @@ subst( X, S, {tup, ElemLst} ) ->
   {tup, [subst( X, S, Elem ) || Elem <- ElemLst]};
 
 subst( X, S, {proj, I, T1} ) ->
-  {proj, I, subst( X, S, T1 )}.
+  {proj, I, subst( X, S, T1 )};
+
+subst( _, _, T={fut, _, _} ) ->
+  T.
 
 
 %% @doc Extracts the set of variable names occurring free in a given term `T`.
@@ -435,7 +448,10 @@ free_vars( {tup, L} ) ->
   sets:union( [free_vars( X ) || X <- L] );
 
 free_vars( {proj, _, T} ) ->
-  free_vars( T ).
+  free_vars( T );
+
+free_vars( {fut, _, _} ) ->
+  sets:new().
 
 
 %% @doc consistently renames all occurrences of a given name `X` in the term
@@ -512,7 +528,10 @@ rename( X, T ) ->
           {tup, [F( Y, Elem, Fresh ) || Elem <- ElemLst]};
 
         F( Y, {proj, I, S}, Fresh ) ->
-          {proj, I, F( Y, S, Fresh )}
+          {proj, I, F( Y, S, Fresh )};
+
+        F( _, S={fut, _, _}, _ ) ->
+          S
 
       end,
 
@@ -614,6 +633,9 @@ tuple_gives_union_of_elements_free_vars_test() ->
 proj_is_neutral_to_free_vars_test() ->
   T = {proj, 1, {tup, [{var, "x"}]}},
   ?assert( sets:is_element( "x", free_vars( T ) ) ).
+
+futures_do_not_contain_free_vars_test() ->
+  ?assertEqual( 0, sets:size( free_vars( {fut, tbool, 12} ) ) ).
 
 
 %% Alpha Renaming
@@ -767,6 +789,10 @@ proj_is_neutral_to_renaming_test() ->
   ?assertNotEqual( T1, T2 ),
   ?assertEqual( T1, rename( "a", T1 ) ).
 
+renaming_leaves_futures_untouched_test() ->
+  T1 = {fut, tbool, 12},
+  ?assertEqual( T1, rename( "x", T1 ) ).
+
 
 %% Substitution
 
@@ -898,6 +924,10 @@ projection_is_neutral_to_substitution_test() ->
   S = {var, "y"},
   T2 = subst( "x", S, T1 ),
   ?assertEqual( {proj, 1, S}, T2 ).
+
+substitution_leaves_future_untouched_test() ->
+  T1 = {fut, tbool, 12},
+  ?assertEqual( T1, subst( "x", true, T1 ) ).
 
 
 %% Type Inference
@@ -1041,5 +1071,9 @@ proj_index_zero_is_untypable_test() ->
 proj_index_negative_is_untypable_test() ->
   T1 = {proj, -1, {tup, [true, {str, "blub"}]}},
   ?assertThrow( {ebad_index, proj, -1}, type_of( T1, #{} ) ).
+
+type_of_fut_is_declared_type_test() ->
+  T1 = {fut, tbool, 12},
+  ?assertEqual( tbool, type_of( T1, #{} ) ).
 
 -endif.
