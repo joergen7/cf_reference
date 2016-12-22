@@ -21,7 +21,7 @@
 -module( cf_reference ).
 -author( "Jorgen Brandt <brandjoe@hu-berlin.de>" ).
 
--export( [as/2, let_bind/4, step/1, subst/3, free_vars/1, rename/2] ).
+-export( [as/2, let_bind/4, step/1, type_of/2] ).
 
 -ifdef( TEST ).
 -include_lib( "eunit/include/eunit.hrl" ).
@@ -127,7 +127,8 @@ let_bind( X, S, T, Ctx ) ->
 %% @doc Takes a single evaluation step, applying any applicable rule except the
 %%      foreign function call rule. No special error checking is performed since
 %%      terms are expected to be well-formed and well-typable. If no evaluation
-%%      rules apply, a corresponding exception of type `throw` is generated.
+%%      rules apply, a corresponding exception `enorule` of type `throw` is
+%%      generated.
 
 -spec step( tm() ) -> tm().
 
@@ -135,7 +136,51 @@ step( {var, _} ) ->
   throw( enorule );
 
 step( {abs_nat, _, _} ) ->
+  throw( enorule );
+
+step( {abs_for, _, _, _, _} ) ->
+  throw( enorule );
+
+step( {app, Left, Right} ) ->
+
+  try step( Left ) of
+    Left1 -> {app, Left1, Right}
+  catch
+    throw:enorule -> {app, Left, step_map( maps:keys( Right ), Right )}
+  end;
+
+
+
+
+step( {cnd, true, ThenTm, _ElseTm} ) ->
+  ThenTm;
+
+step( {cnd, false, _ThenTm, ElseTm} ) ->
+  ElseTm;
+
+step( {cnd, IfTm, ThenTm, ElseTm} ) ->
+  {cnd, step( IfTm ), ThenTm, ElseTm};
+
+step( {fut, _, _} ) ->
   throw( enorule ).
+
+
+%% @doc Tries to apply the step function to all map keys in the given list and
+%%      returns an updated map if the step function is applicable. Otherwise
+%%      `enorule` is thrown.
+
+-spec step_map( [string()], #{ string() => tm() } ).
+
+step_map( [], _ ) ->
+  throw( enorule );
+
+step_map( [Hd|Tl], Map ) ->
+  #{ Hd := Tm0 } = Map,
+  try step( Tm0 ) of
+    Tm1 -> Map#{ Hd := Tm1 }
+  catch
+    throw:enorule -> step_map( Tl, Map )
+  end.
 
 %%====================================================================
 %% Type System
@@ -582,6 +627,9 @@ rename_type( X, {tlst, Tp1}, Fresh ) ->
 rename_type( X, {ttup, TpLst}, Fresh ) ->
   {ttup, [rename_type( X, T, Fresh ) || T <- TpLst]}.
 
+
+%% @doc Consistently renames all occurrences of the name `X` in the signature
+%%      `Sign` replacing it with the fresh name `Fresh`.
 
 -spec rename_sign( X::string(), Sign::ctx(), Fresh::string() ) -> ctx().
 
@@ -1169,14 +1217,16 @@ cons_head_type_mismatch_is_untypable_test() ->
 
 cons_tail_type_mismatch_is_untypable_test() ->
   T1 = {cons, tstr, {str, "blub"}, {nl, tbool}},
-  ?assertThrow( {etail_type, cons, {{tlst, tstr}, {tlst, tbool}}}, type_of( T1, #{} ) ).
+  Throw = {etail_type, cons, {{tlst, tstr}, {tlst, tbool}}},
+  ?assertThrow( Throw, type_of( T1, #{} ) ).
 
 type_of_isnil_is_tbool_test() ->
   ?assertEqual( tbool, type_of( {isnil, tstr, {nl, tstr}}, #{} ) ).
 
 isnil_type_mismatch_is_untypable_test() ->
   T1 = {isnil, tstr, {nl, tbool}},
-  ?assertThrow( {elst_type, isnil, {{tlst, tstr}, {tlst, tbool}}}, type_of( T1, #{} ) ).
+  Throw = {elst_type, isnil, {{tlst, tstr}, {tlst, tbool}}},
+  ?assertThrow( Throw, type_of( T1, #{} ) ).
 
 type_of_tuple_is_tup_of_element_types_test() ->
   T1 = {tup, [true, {str, "blub"}]},
@@ -1206,6 +1256,62 @@ type_of_fut_is_declared_type_test() ->
 %% Step Relation
 
 variable_is_no_redex_test() ->
-  ?assertThrow( enorule, step( {var, "x"} ) ).
+  T = {var, "x"},
+  ?assertThrow( {eundef, var, "x"}, type_of( T, #{} ) ),
+  ?assertThrow( enorule, step( T ) ).
+
+native_abstraction_is_no_redex_test() ->
+  T = {abs_nat, #{ "x" => tbool }, {str, "blub"}},
+  ?assertEqual( {tabs, nat, #{ "x" => tbool }, tstr}, type_of( T, #{} ) ),
+  ?assertThrow( enorule, step( T ) ).
+
+foreign_abstraction_is_no_redex_test() ->
+  T = {abs_for, #{ "x" => tbool }, tstr, bash, "blub"},
+  ?assertEqual( {tabs, for, #{ "x" => tbool }, tstr}, type_of( T, #{} ) ),
+  ?assertThrow( enorule, step( T ) ).
+
+application_without_redexes_gets_stuck_test() ->
+  A = {abs_nat, #{ "x" => tbool}, {str, "bla"}},
+  X = {fut, tbool, 12},
+  T = {app, A, #{ "x" => X }},
+  ?assertEqual( tstr, type_of( T, #{} ) ),
+  ?assertThrow( enorule, step( T ) ).
+
+left_hand_side_of_application_is_evaluated_test() ->
+  A1 = {abs_nat, #{ "x" => tbool}, {str, "bla"}},
+  A2 = {abs_nat, #{ "x" => tbool}, {str, "blub"}},
+  A = {cnd, true, A1, A2},
+  T = {app, A, #{ "x" => true }},
+  ?assertEqual( tstr, type_of( T, #{} ) ),
+  ?assertEqual( {app, A1, #{ "x" => true }}, step( T ) ).
+
+right_hand_side_of_application_is_evaluated_test() ->
+  A = {abs_nat, #{ "x" => tbool}, {str, "bla"}},
+  X = {cnd, true, true, false},
+  T = {app, A, #{ "x" => X }},
+  ?assertEqual( tstr, type_of( T, #{} ) ),
+  ?assertEqual( {app, A, #{ "x" => true }}, step( T ) ).
+
+
+
+
+cnd_evaluates_if_term_test() ->
+  T1 = {cnd, {cnd, true, true, false}, {str, "bla"}, {str, "blub"}},
+  T2 = {cnd, true, {str, "bla"}, {str, "blub"}},
+  ?assertEqual( tstr, type_of( T1, #{} ) ),
+  ?assertEqual( T2, step( T1 ) ).
+
+cnd_true_evaluates_then_term_test() ->
+  T = {cnd, true, {str, "bla"}, {str, "blub"}},
+  ?assertEqual( tstr, type_of( T, #{} ) ),
+  ?assertEqual( {str, "bla"}, step( T ) ).
+
+cnd_false_evaluates_else_term_test() ->
+  T = {cnd, false, {str, "bla"}, {str, "blub"}},
+  ?assertEqual( tstr, type_of( T, #{} ) ),
+  ?assertEqual( {str, "blub"}, step( T ) ).
+
+fut_is_no_redex_test() ->
+  ?assertThrow( enorule, step( {fut, tbool, 12} ) ).
 
 -endif.
