@@ -478,46 +478,49 @@ rename( X, T ) ->
 
 -spec rename_term( X::string(), T::tm(), Fresh::string() ) -> tm().
 
-rename_term( Y, {var, Y}, Fresh ) ->
+rename_term( X, {var, X}, Fresh ) ->
   {var, Fresh};
 
-rename_term( _, S={var, _}, _ ) ->
-  S;
+rename_term( _, T={var, _}, _ ) ->
+  T;
 
-rename_term( Y, {abs_nat, Sign, Body}, Fresh ) ->
-  Sign1 = case maps:is_key( Y, Sign ) of
-            false -> Sign;
-            true  ->
-              #{ Y := Tp } = Sign,
-              maps:put( Fresh, rename_type( Y, Tp, Fresh ),
-                               maps:remove( Y, Sign ) )
-          end,
-  Body1 = rename_term( Y, Body, Fresh ),
+rename_term( X, {abs_nat, Sign, Body}, Fresh ) ->
+  Sign1 = rename_sign( X, Sign, Fresh ),
+  Body1 = rename_term( X, Body, Fresh ),
   {abs_nat, Sign1, Body1};
 
-rename_term( Y, {abs_for, Sign, RetTp, Lang, Body}, Fresh ) ->
-  Sign1 = case maps:is_key( Y, Sign ) of
-            false -> Sign;
-            true  ->
-              #{ Y := Tp } = Sign,
-              maps:put( Fresh, Tp, maps:remove( Y, Sign ) )
-          end,
+rename_term( X, {abs_for, Sign, RetTp, Lang, Body}, Fresh ) ->
+  Sign1 = rename_sign( X, Sign, Fresh ),
   {abs_for, Sign1, RetTp, Lang, Body};
 
-rename_term( Y, {app, Left, Right}, Fresh ) ->
-  Left1 = rename_term( Y, Left, Fresh ),
-  Right1 = maps:map( fun( _, S ) -> rename_term( Y, S, Fresh ) end, Right ),
-  {app, Left1, Right1};
+rename_term( X, {app, Left, Right}, Fresh ) ->
 
-rename_term( Y, {fix, S}, Fresh ) ->
-  {fix, rename_term( Y, S, Fresh )};
+  F = fun( _, T ) ->
+        rename_term( X, T, Fresh )
+      end,
 
-rename_term( Y, {zipwith, Tp, ArgLst, S}, Fresh ) ->
-  ArgLst1 = case lists:member( Y, ArgLst ) of
+  Right1 = maps:map( F, Right ),
+
+  Right2 = case maps:is_key( X, Right1 ) of
+             false -> Right1;
+             true  ->
+               #{ X := T } = Right1,
+               maps:put( Fresh, T, maps:remove( X, Right1 ) )
+           end,
+
+  Left1 = rename_term( X, Left, Fresh ),
+
+  {app, Left1, Right2};
+
+rename_term( X, {fix, S}, Fresh ) ->
+  {fix, rename_term( X, S, Fresh )};
+
+rename_term( X, {zipwith, Tp, ArgLst, S}, Fresh ) ->
+  ArgLst1 = case lists:member( X, ArgLst ) of
               false -> ArgLst;
-              true  -> [Fresh|lists:delete( Y, ArgLst )]
+              true  -> [Fresh|lists:delete( X, ArgLst )]
             end,
-  {zipwith, rename_type( Y, Tp, Fresh ), ArgLst1, rename_term( Y, S, Fresh )};
+  {zipwith, rename_type( X, Tp, Fresh ), ArgLst1, rename_term( X, S, Fresh )};
 
 rename_term( _, S, _ ) when is_boolean( S ) ->
   S;
@@ -554,26 +557,15 @@ rename_term( _, S={fut, _, _}, _ ) ->
   S.
 
 
+%% @doc Consistently renames all occurrences of a given name `X` in the type
+%%      `Tp` replacing it with the name `Fresh`.
+
 -spec rename_type( X::string(), Tp::tp(), Fresh::string() ) -> tp().
 
 rename_type( X, {tabs, nat, Sign, Tret}, Fresh ) ->
-
-  F = fun( _, Tp ) ->
-        rename_type( X, Tp, Fresh )
-      end,
-
-  Sign1 = maps:map( F, Sign ),
-
-  Sign2 = case lists:member( X, maps:keys( Sign1 ) ) of
-            false -> Sign1;
-            true  ->
-              #{ X := Tp } = Sign1,
-              maps:put( Fresh, Tp, maps:remove( X, Sign1 ) )
-          end,
-
+  Sign1 = rename_sign( X, Sign, Fresh ),
   Tret1 = rename_type( X, Tret, Fresh ),
-
-  {tabs, nat, Sign2, Tret1};
+  {tabs, nat, Sign1, Tret1};
 
 rename_type( _, tbool, _ ) ->
   tbool;
@@ -590,6 +582,23 @@ rename_type( X, {tlst, Tp1}, Fresh ) ->
 rename_type( X, {ttup, TpLst}, Fresh ) ->
   {ttup, [rename_type( X, T, Fresh ) || T <- TpLst]}.
 
+
+-spec rename_sign( X::string(), Sign::ctx(), Fresh::string() ) -> ctx().
+
+rename_sign( X, Sign, Fresh ) ->
+
+  F = fun( _, Tp ) ->
+        rename_type( X, Tp, Fresh )
+      end,
+
+  Sign1 = maps:map( F, Sign ),
+
+  case maps:is_key( X, Sign1 ) of
+    false -> Sign1;
+    true  ->
+      #{ X := Tp } = Sign1,
+      maps:put( Fresh, Tp, maps:remove( X, Sign1 ) )
+  end.
 
 %%====================================================================
 %% Internal Functions
