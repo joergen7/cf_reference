@@ -147,7 +147,7 @@ step( {app, Left, Right} ) ->
     Left1 -> {app, Left1, Right}
   catch
     throw:enorule -> {app, Left, step_map( maps:keys( Right ), Right )}
-  end;
+end;
 
 
 
@@ -169,7 +169,7 @@ step( {fut, _, _} ) ->
 %%      returns an updated map if the step function is applicable. Otherwise
 %%      `enorule` is thrown.
 
--spec step_map( [string()], #{ string() => tm() } ).
+-spec step_map( [string()], #{ string() => tm() } ) -> #{ string() => tm() }.
 
 step_map( [], _ ) ->
   throw( enorule );
@@ -1292,7 +1292,12 @@ right_hand_side_of_application_is_evaluated_test() ->
   ?assertEqual( tstr, type_of( T, #{} ) ),
   ?assertEqual( {app, A, #{ "x" => true }}, step( T ) ).
 
-
+application_of_empty_native_abstraction_test() ->
+  S = {str, "bla"},
+  A = {abs_nat, #{}, S},
+  T = {app, A, #{}},
+  ?assertEqual( tstr, type_of( T, #{} ) ),
+  ?assertEqual( S, step( T ) ).
 
 
 cnd_evaluates_if_term_test() ->
