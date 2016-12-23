@@ -105,6 +105,16 @@ step( T={app, Left, Right}, Mu ) ->
               end
           end;
         {zipwith, Tobj, NameLst, T12} ->
+          IsNil = fun
+                    IsNil( [], _ ) ->
+                      false;
+                    IsNil( [H|Tail], R ) ->
+                      #{ H := V } = R,
+                      case V of
+                        {nl, _} -> true;
+                        _       -> IsNil( Tail, R )
+                      end
+                  end,
           F = fun( X, Tr ) ->
                 case lists:member( X, NameLst ) of
                   true  ->
@@ -121,11 +131,15 @@ step( T={app, Left, Right}, Mu ) ->
                   false -> Tr
                 end
               end,
-          HdRight = maps:map( F, Right ),
-          TlRight = maps:map( G, Right ),
-          Hd = {app, T12, HdRight},
-          Tl = {app, {zipwith, Tobj, NameLst, T12}, TlRight},
-          {cons, Tobj, Hd, Tl}
+          case IsNil( NameLst, Right ) of
+            true  -> {nl, Tobj};
+            false ->
+              HdRight = maps:map( F, Right ),
+              TlRight = maps:map( G, Right ),
+              Hd = {app, T12, HdRight},
+              Tl = {app, {zipwith, Tobj, NameLst, T12}, TlRight},
+              {cons, Tobj, Hd, Tl}
+          end
       end
   end;
 
@@ -332,6 +346,9 @@ type_of( {fix, T1}, Ctx ) ->
         NameLst -> throw( {enonsingular, fix, NameLst} )
       end
   end;
+
+type_of( {zipwith, _, [], _}, _ ) ->
+  throw( {ebad_namelst, zipwith, empty_namelst} );
 
 type_of( {zipwith, DeclaredTp, ArgLst, T1}, Ctx ) ->
   
@@ -1332,6 +1349,10 @@ foreign_call_with_arg_bound_to_abstraction_is_untypable_test() ->
   Throw = {earg_type, app, {"x", {tabs, nat, #{}, tstr}}},
   ?assertThrow( Throw, type_of( T, #{} ) ).
 
+zipwith_with_empty_name_list_is_untypable_test() ->
+  T = {zipwith, tbool, [], {abs_nat, #{ "x" => tbool }, {var, "x"}}},
+  ?assertThrow( {ebad_namelst, zipwith, empty_namelst}, type_of( T, #{} ) ).
+
 
 %% Step Relation
 
@@ -1433,6 +1454,16 @@ zipwith_consumes_head_of_target_list_test() ->
   App = {app, T12, #{"x" => true}},
   Rest = {app, Left, #{ "x" => {cons, tbool, false, {nl, tbool}}}},
   T2 = {cons, tbool, App, Rest},
+  ?assertEqual( {tlst, tbool}, type_of( T1, #{} ) ),
+  ?assertEqual( T2, step( T1, ?MU ) ).
+
+zipwith_stops_if_one_of_the_target_lists_is_nil_test() ->
+  T12 = {abs_nat, #{ "x" => tbool, "y" => tbool }, {var, "x"}},
+  Left = {zipwith, tbool, ["x", "y"], T12},
+  Right = #{ "x" => {cons, tbool, true, {cons, tbool, false, {nl, tbool}}},
+             "y" => {nl, tbool} },
+  T1 = {app, Left, Right},
+  T2 = {nl, tbool},
   ?assertEqual( {tlst, tbool}, type_of( T1, #{} ) ),
   ?assertEqual( T2, step( T1, ?MU ) ).
 
