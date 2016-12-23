@@ -21,13 +21,30 @@
 -module( cf_reference ).
 -author( "Jorgen Brandt <brandjoe@hu-berlin.de>" ).
 
--export( [as/2, let_bind/4, step/2, type_of/2] ).
+-export( [as/2, let_bind/4, eval/2, type_of/2] ).
 
 -include( "cf_reference.hrl" ).
 
 -ifdef( TEST ).
 -include_lib( "eunit/include/eunit.hrl" ).
 -endif.
+
+%%====================================================================
+%% Constructors
+%%====================================================================
+
+lst( Tp, [] )    -> {nl, Tp};
+lst( Tp, [H|T] ) -> {cons, Tp, H, lst( Tp, T )}.
+
+str( S ) -> {str, S}.
+
+app( Left, Right ) -> {app, Left, Right}.
+
+var( X ) -> {var, X}.
+
+cnd( If, Then, Else ) -> {cnd, If, Then, Else}.
+
+isnil( Tp, Tm ) -> {isnil, Tp, Tm}.
 
 
 %%====================================================================
@@ -54,6 +71,18 @@ let_bind( X, S, T, Ctx ) ->
 %%====================================================================
 %% Evaluation
 %%====================================================================
+
+%% @doc Repeatedly applies the step function to `Tm` to obtain an expression
+%%      that cannot be further reduced.
+
+-spec eval( Tm::tm(), Mu::fun( ( app() ) -> fut() ) ) -> tm().
+
+eval( Tm, Mu ) ->
+  try step( Tm, Mu ) of
+    Tm1 -> eval( Tm1, Mu )
+  catch
+    throw:enorule -> Tm
+  end.
 
 %% @doc Takes a single evaluation step, applying any applicable rule except the
 %%      foreign function call rule. No special error checking is performed since
@@ -101,7 +130,7 @@ step( T={app, Left, Right}, Mu ) ->
             Right1 -> {app, Left, Right1}                                       % (10)
           catch
             throw:enorule ->
-              case lists:all( fun is_uvalue/1, maps:values( Right ) ) of
+              case lists:all( fun is_value/1, maps:values( Right ) ) of
                 true  -> Mu( T );                                               % (13)
                 false -> throw( enorule )
               end
@@ -240,15 +269,17 @@ step_lst( [Hd|Tl], Mu ) ->
 
 %% @doc Tests whether a given term is a value of a ground type.
 
--spec is_uvalue( tm() ) -> boolean().
+-spec is_value( tm() ) -> boolean().
 
-is_uvalue( T ) when is_boolean( T ) -> true;
-is_uvalue( {str, _} )               -> true;
-is_uvalue( {file, _} )              -> true;
-is_uvalue( {nl, _} )                -> true;
-is_uvalue( {cons, _, Hd, Tl} )      -> is_uvalue( Hd ) andalso is_uvalue( Tl );
-is_uvalue( {tup, TmLst} )           -> lists:all( fun is_uvalue/1, TmLst );
-is_uvalue( _ )                      -> false.
+is_value( {abs_nat, _, _} )        -> true;
+is_value( {abs_for, _, _, _, _} )  -> true;
+is_value( T ) when is_boolean( T ) -> true;
+is_value( {str, _} )               -> true;
+is_value( {file, _} )              -> true;
+is_value( {nl, _} )                -> true;
+is_value( {cons, _, Hd, Tl} )      -> is_value( Hd ) andalso is_value( Tl );
+is_value( {tup, TmLst} )           -> lists:all( fun is_value/1, TmLst );
+is_value( _ )                      -> false.
 
 
 %%====================================================================
@@ -1532,5 +1563,24 @@ tuple_evaluates_inner_terms_test() ->
 
 fut_is_no_redex_test() ->
   ?assertThrow( enorule, step( {fut, tbool, 12}, ?MU ) ).
+
+
+%% Values
+
+str_should_be_value_test() ->
+  S = lst( tstr, [str( "blub" )] ),
+  ?assertEqual( {tlst, tstr}, type_of( S, #{} ) ),
+  ?assert( is_value( S ) ).
+
+app_should_not_be_value_test() ->
+  A = app( var( "f" ), #{} ),
+  Ctx = #{ "f" => {tabs, nat, #{}, {tlst, tstr}} },
+  ?assertEqual( {tlst, tstr}, type_of( A, Ctx ) ),
+  ?assertNot( is_value( A ) ).
+
+cnd_should_not_be_value_test() ->
+  If = cnd( isnil( tstr, lst( tstr, [str( "a" )] ) ), false, true ),
+  C = cnd( If, lst( tstr, [str( "b" )] ), lst( tstr, [str( "c" )] ) ),
+  ?assertNot( is_value( C ) ).
 
 -endif.
