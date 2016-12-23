@@ -21,82 +21,13 @@
 -module( cf_reference ).
 -author( "Jorgen Brandt <brandjoe@hu-berlin.de>" ).
 
--export( [as/2, let_bind/4, step/1, type_of/2] ).
+-export( [as/2, let_bind/4, step/2, type_of/2] ).
+
+-include( "cf_reference.hrl" ).
 
 -ifdef( TEST ).
 -include_lib( "eunit/include/eunit.hrl" ).
 -endif.
-
-%%====================================================================
-%% Abstract Syntax
-%%====================================================================
-
-%% Terms
-
--type tm()       :: var() | abs_nat() | abs_for() | app()
-                  | fix() | zipwith()
-                  | boolean() | cnd()
-                  | str() | file()
-                  | nl() | cons() | isnil()
-                  | tup() | proj()
-                  | fut().
-
--type var()      :: {var, Name::string()}.
-
--type abs_nat()  :: {abs_nat, Sign::ctx(), Body::tm()}.
-
--type abs_for()  :: {abs_for, Sign::uctx(), RetTp::utp(), Lang::lang(),
-                             Body::binary()}.
-
--type app()      :: {app, Left::tm(), Right:: arg_map()}.
-
--type fix()      :: {fix, Tm::tm()}.
-
--type zipwith()  :: {zipwith, Tret::tp(), ArgLst::[string()], Tm::tm()}.
-
--type cnd()      :: {cnd, IfTm::tm(), ThenTm::tm(), ElseTm::tm()}.
-
--type str()      :: {str, string()}.
-
--type file()     :: {file, string()}.
-
--type nl()       :: {nl, Tp::tp()}.
-
--type cons()     :: {cons, Tp::tp(), Head::tm(), Tail::tm()}.
-
--type isnil()    :: {isnil, Tp::tp(), Tm::tm()}.
-
--type tup()      :: {tup, [tm()]}.
-
--type proj()     :: {proj, I::pos_integer(), Tuple::tm()}.
-
--type fut()      :: {fut, Tp::utp(), K::pos_integer()}.
-
-
-%% Types
-
--type tp()       :: tabs_nat() | tabs_for()
-                  | tbool | tstr | tfile | tlst() | ttup().
-
--type utp()      :: tbool | tstr | tfile | tlst() | ttup().
-
--type ttup()     :: {ttup, ElemLst::[tp()]}.
-
--type tlst()     :: {tlst, tp()}.
-
--type tabs_nat() :: {tabs, nat, Sign::ctx(), Tret::tp()}.
-
--type tabs_for() :: {tabs, for, Sign::uctx(), Tret::utp()}.
-
-%% Auxiliaries
-
--type lang()    :: bash | octave | perl | python | r.
-
--type arg_map() :: #{ string() => tm() }.
-
--type ctx()     :: #{ string => tp() }.
-
--type uctx()    :: #{ string => utp() }.
 
 
 %%====================================================================
@@ -130,38 +61,96 @@ let_bind( X, S, T, Ctx ) ->
 %%      rules apply, a corresponding exception `enorule` of type `throw` is
 %%      generated.
 
--spec step( tm() ) -> tm().
+-spec step( tm(), fun( ( app() ) -> fut() ) ) -> tm().
 
-step( {var, _} ) ->
+step( {var, _}, _ ) ->
   throw( enorule );
 
-step( {abs_nat, _, _} ) ->
+step( {abs_nat, _, _}, _ ) ->
   throw( enorule );
 
-step( {abs_for, _, _, _, _} ) ->
+step( {abs_for, _, _, _, _}, _ ) ->
   throw( enorule );
 
-step( {app, Left, Right} ) ->
+step( T={app, Left, Right}, Mu ) ->
 
-  try step( Left ) of
-    Left1 -> {app, Left1, Right}
+  try step( Left, Mu ) of
+    Left1 -> {app, Left1, Right}                                                % (9)
   catch
-    throw:enorule -> {app, Left, step_map( maps:keys( Right ), Right )}
-end;
+    throw:enorule ->
+      case Left of
+        {abs_nat, Sign, T12} ->
+          case maps:size( Sign ) of
+            0 -> T12;                                                           % (11)
+            _ ->
+              try step_map( maps:keys( Right ), Right, Mu ) of
+                Right1 -> {app, Left, Right1}                                   % (10)
+              catch
+                throw:enorule ->
+                  [X|_] = maps:keys( Sign ),
+                  #{ X := T21 } = Right,
+                  Right2 = maps:remove( X, Right ),
+                  Sign2 = maps:remove( X, Sign ),
+                  {app, {abs_nat, Sign2, subst( X, T21, T12 )}, Right2}         % (12)
+              end
+          end;
+        {abs_for, _, _, _, _} ->
+          try step_map( maps:keys( Right ), Right, Mu ) of
+            Right1 -> {app, Left, Right1}                                       % (10)
+          catch
+            throw:enorule ->
+              case lists:all( fun is_uvalue/1, maps:values( Right ) ) of
+                true  -> Mu( T );                                               % (13)
+                false -> throw( enorule )
+              end
+          end
+      end
+  end;
+
+% TODO: general recursion
+
+% TODO: zipwith
 
 
-
-
-step( {cnd, true, ThenTm, _ElseTm} ) ->
+step( {cnd, true, ThenTm, _ElseTm}, _ ) ->
   ThenTm;
 
-step( {cnd, false, _ThenTm, ElseTm} ) ->
+step( {cnd, false, _ThenTm, ElseTm}, _ ) ->
   ElseTm;
 
-step( {cnd, IfTm, ThenTm, ElseTm} ) ->
-  {cnd, step( IfTm ), ThenTm, ElseTm};
+step( {cnd, IfTm, ThenTm, ElseTm}, Mu ) ->
+  {cnd, step( IfTm, Mu ), ThenTm, ElseTm};
 
-step( {fut, _, _} ) ->
+
+step( {str, _}, _ ) ->
+  throw( enorule );
+
+step( {file, _}, _ ) ->
+  throw( enorule );
+
+step( {cons, Tp, T1, T2}, Mu ) ->
+  try step( T1, Mu ) of
+    T11 -> {cons, Tp, T11, T2}
+  catch
+    throw:enorule -> {cons, Tp, T1, step( T2, Mu )}
+  end;
+
+step( {isnil, _, {nl, _}}, _ ) ->
+  true;
+
+step( {isnil, _, {cons, _, _, _}}, _ ) ->
+  false;
+
+step( {isnil, Tp, Tm}, Mu ) ->
+  {isnil, Tp, step( Tm, Mu )};
+
+step( {proj, I, {tup, ElemLst}}, _ ) ->
+  lists:nth( I, ElemLst );
+
+step( {tup, ElemLst}, Mu ) ->
+  {tup, step_lst( ElemLst, Mu )};
+
+step( {fut, _, _}, _ ) ->
   throw( enorule ).
 
 
@@ -169,18 +158,54 @@ step( {fut, _, _} ) ->
 %%      returns an updated map if the step function is applicable. Otherwise
 %%      `enorule` is thrown.
 
--spec step_map( [string()], #{ string() => tm() } ) -> #{ string() => tm() }.
+-spec step_map( ArgLst, ArgMap, Mu ) -> #{ string() => tm() }
+when ArgLst :: [string()],
+     ArgMap :: #{ string() => tm() },
+     Mu     :: fun( ( app() ) -> fut() ).
 
-step_map( [], _ ) ->
+step_map( [], _, _ ) ->
   throw( enorule );
 
-step_map( [Hd|Tl], Map ) ->
+step_map( [Hd|Tl], Map, Mu ) ->
   #{ Hd := Tm0 } = Map,
-  try step( Tm0 ) of
+  try step( Tm0, Mu ) of
     Tm1 -> Map#{ Hd := Tm1 }
   catch
-    throw:enorule -> step_map( Tl, Map )
+    throw:enorule -> step_map( Tl, Map, Mu )
   end.
+
+
+%% @doc Tries to apply the step function to all elements in the given list and
+%%      returns an updated list if the step function was applicable. Otherwise
+%%      `enorule` is thrown.
+
+-spec step_lst( TmLst, Mu ) -> [tm()]
+when TmLst :: [tm()],
+     Mu    :: fun( ( app() ) -> fut() ).
+
+step_lst( [], _ ) ->
+  throw( enorule );
+
+step_lst( [Hd|Tl], Mu ) ->
+  try step( Hd, Mu ) of
+    Hd1 -> [Hd1|Tl]
+  catch
+    throw:enorule -> [Hd|step_lst( Tl, Mu )]
+  end.
+
+
+%% @doc Tests whether a given term is a value of a ground type.
+
+-spec is_uvalue( tm() ) -> boolean().
+
+is_uvalue( T ) when is_boolean( T ) -> true;
+is_uvalue( {str, _} )               -> true;
+is_uvalue( {file, _} )              -> true;
+is_uvalue( {nl, _} )                -> true;
+is_uvalue( {cons, _, Hd, Tl} )      -> is_uvalue( Hd ) andalso is_uvalue( Tl );
+is_uvalue( {tup, TmLst} )           -> lists:all( fun is_uvalue/1, TmLst );
+is_uvalue( _ )                      -> false.
+
 
 %%====================================================================
 %% Type System
@@ -678,6 +703,8 @@ basename( X ) ->
 %%====================================================================
 
 -ifdef( TEST ).
+
+-define( MU, fun( {app, {abs_for, _, Tret, _, _}, _} ) -> {fut, Tret, 23} end ).
 
 %% Free Variables
 
@@ -1258,24 +1285,24 @@ type_of_fut_is_declared_type_test() ->
 variable_is_no_redex_test() ->
   T = {var, "x"},
   ?assertThrow( {eundef, var, "x"}, type_of( T, #{} ) ),
-  ?assertThrow( enorule, step( T ) ).
+  ?assertThrow( enorule, step( T, ?MU ) ).
 
 native_abstraction_is_no_redex_test() ->
   T = {abs_nat, #{ "x" => tbool }, {str, "blub"}},
   ?assertEqual( {tabs, nat, #{ "x" => tbool }, tstr}, type_of( T, #{} ) ),
-  ?assertThrow( enorule, step( T ) ).
+  ?assertThrow( enorule, step( T, ?MU ) ).
 
 foreign_abstraction_is_no_redex_test() ->
   T = {abs_for, #{ "x" => tbool }, tstr, bash, "blub"},
   ?assertEqual( {tabs, for, #{ "x" => tbool }, tstr}, type_of( T, #{} ) ),
-  ?assertThrow( enorule, step( T ) ).
+  ?assertThrow( enorule, step( T, ?MU ) ).
 
 application_without_redexes_gets_stuck_test() ->
-  A = {abs_nat, #{ "x" => tbool}, {str, "bla"}},
+  A = {abs_for, #{ "x" => tbool}, tstr, bash, "bla"},
   X = {fut, tbool, 12},
   T = {app, A, #{ "x" => X }},
   ?assertEqual( tstr, type_of( T, #{} ) ),
-  ?assertThrow( enorule, step( T ) ).
+  ?assertThrow( enorule, step( T, ?MU ) ).
 
 left_hand_side_of_application_is_evaluated_test() ->
   A1 = {abs_nat, #{ "x" => tbool}, {str, "bla"}},
@@ -1283,40 +1310,112 @@ left_hand_side_of_application_is_evaluated_test() ->
   A = {cnd, true, A1, A2},
   T = {app, A, #{ "x" => true }},
   ?assertEqual( tstr, type_of( T, #{} ) ),
-  ?assertEqual( {app, A1, #{ "x" => true }}, step( T ) ).
+  ?assertEqual( {app, A1, #{ "x" => true }}, step( T, ?MU ) ).
 
-right_hand_side_of_application_is_evaluated_test() ->
+right_hand_side_of_application_with_native_abstraction_is_evaluated_test() ->
   A = {abs_nat, #{ "x" => tbool}, {str, "bla"}},
   X = {cnd, true, true, false},
   T = {app, A, #{ "x" => X }},
   ?assertEqual( tstr, type_of( T, #{} ) ),
-  ?assertEqual( {app, A, #{ "x" => true }}, step( T ) ).
+  ?assertEqual( {app, A, #{ "x" => true }}, step( T, ?MU ) ).
+
+right_hand_side_of_application_with_foreign_abstraction_is_evaluated_test() ->
+  A = {abs_for, #{ "x" => tbool}, tstr, bash, "bla"},
+  X = {cnd, true, true, false},
+  T = {app, A, #{ "x" => X }},
+  ?assertEqual( tstr, type_of( T, #{} ) ),
+  ?assertEqual( {app, A, #{ "x" => true }}, step( T, ?MU ) ).
 
 application_of_empty_native_abstraction_test() ->
   S = {str, "bla"},
   A = {abs_nat, #{}, S},
   T = {app, A, #{}},
   ?assertEqual( tstr, type_of( T, #{} ) ),
-  ?assertEqual( S, step( T ) ).
+  ?assertEqual( S, step( T, ?MU ) ).
+
+application_leads_to_substitution_in_native_abstraction_body_test() ->
+  S = {str, "bla"},
+  A = {abs_nat, #{ "x" => tstr }, {var, "x"}},
+  T = {app, A, #{ "x" => S }},
+  ?assertEqual( tstr, type_of( T, #{} ) ),
+  ?assertEqual( {app, {abs_nat, #{}, S}, #{}}, step( T, ?MU ) ).
+
+foreign_call_generates_future_test() ->
+  A = {abs_for, #{ "x" => tstr }, tstr, bash, "blub"},
+  X = {str, "bla"},
+  T = {app, A, #{ "x" => X }},
+  ?assertEqual( tstr, type_of( T, #{} ) ),
+  ?assertMatch( {fut, tstr, _}, step( T, ?MU ) ).
+
+foreign_call_evaluates_right_hand_side_prior_to_generating_future_test() ->
+  A = {abs_for, #{ "x" => tstr }, tstr, bash, "blub"},
+  S = {str, "bla"},
+  X = {cnd, true, S, {str, "lalala"}},
+  T = {app, A, #{ "x" => X }},
+  ?assertEqual( tstr, type_of( T, #{} ) ),
+  ?assertEqual( {app, A, #{ "x" => S }}, step( T, ?MU ) ).
 
 
 cnd_evaluates_if_term_test() ->
   T1 = {cnd, {cnd, true, true, false}, {str, "bla"}, {str, "blub"}},
   T2 = {cnd, true, {str, "bla"}, {str, "blub"}},
   ?assertEqual( tstr, type_of( T1, #{} ) ),
-  ?assertEqual( T2, step( T1 ) ).
+  ?assertEqual( T2, step( T1, ?MU ) ).
 
 cnd_true_evaluates_then_term_test() ->
   T = {cnd, true, {str, "bla"}, {str, "blub"}},
   ?assertEqual( tstr, type_of( T, #{} ) ),
-  ?assertEqual( {str, "bla"}, step( T ) ).
+  ?assertEqual( {str, "bla"}, step( T, ?MU ) ).
 
 cnd_false_evaluates_else_term_test() ->
   T = {cnd, false, {str, "bla"}, {str, "blub"}},
   ?assertEqual( tstr, type_of( T, #{} ) ),
-  ?assertEqual( {str, "blub"}, step( T ) ).
+  ?assertEqual( {str, "blub"}, step( T, ?MU ) ).
+
+str_is_no_redex_test() ->
+  ?assertThrow( enorule, step( {str, "bla"}, ?MU ) ).
+
+file_is_no_redex_test() ->
+  ?assertThrow( enorule, step( {file, "bla"}, ?MU ) ).
+
+head_of_list_is_evaluated_test() ->
+  T = {cons, tstr, {cnd, true, {str, "bla"}, {str, "blub"}}, {nl, tstr}},
+  ?assertEqual( {tlst, tstr}, type_of( T, #{} ) ),
+  ?assertEqual( {cons, tstr, {str, "bla"}, {nl, tstr}}, step( T, ?MU ) ).
+
+tail_of_list_is_evaluated_test() ->
+  T11 = {cons, tstr, {cnd, true, {str, "bla"}, {str, "blub"}}, {nl, tstr}},
+  T1 = {cons, tstr, {str, "lala"}, T11},
+  T2 = {cons, tstr, {str, "lala"}, {cons, tstr, {str, "bla"}, {nl, tstr}}},
+  ?assertEqual( {tlst, tstr}, type_of( T1, #{} ) ),
+  ?assertEqual( T2, step( T1, ?MU ) ).
+
+isnil_of_nil_evaluates_to_true_test() ->
+  T = {isnil, tstr, {nl, tstr}},
+  ?assertEqual( tbool, type_of( T, #{} ) ),
+  ?assertEqual( true, step( T, ?MU ) ).
+
+isnil_of_cons_evaluates_to_false_test() ->
+  T = {isnil, tstr, {cons, tstr, {str, "bla"}, {nl, tstr}}},
+  ?assertEqual( tbool, type_of( T, #{} ) ),
+  ?assertEqual( false, step( T, ?MU ) ).
+
+isnil_of_redex_reduces_inner_term_test() ->
+  T = {isnil, tstr, {cnd, true, {nl, tstr}, {nl, tstr}}},
+  ?assertEqual( tbool, type_of( T, #{} ) ),
+  ?assertEqual( {isnil, tstr, {nl, tstr}}, step( T, ?MU ) ).
+
+projection_retrieves_corresponding_tuple_element_test() ->
+  T = {proj, 2, {tup, [{str, "bla"}, {str, "blub"}]}},
+  ?assertEqual( tstr, type_of( T, #{} ) ),
+  ?assertEqual( {str, "blub"}, step( T, ?MU ) ).
+
+tuple_evaluates_inner_terms_test() ->
+  T = {tup, [{cnd, true, true, false}]},
+  ?assertEqual( {ttup, [tbool]}, type_of( T, #{} ) ),
+  ?assertEqual( {tup, [true]}, step( T, ?MU ) ).
 
 fut_is_no_redex_test() ->
-  ?assertThrow( enorule, step( {fut, tbool, 12} ) ).
+  ?assertThrow( enorule, step( {fut, tbool, 12}, ?MU ) ).
 
 -endif.
