@@ -79,6 +79,7 @@ step( T={app, Left, Right}, Mu ) ->
   catch
     throw:enorule ->
       case Left of
+
         {abs_nat, Sign, T12} ->
           case maps:size( Sign ) of
             0 -> T12;                                                           % (11)
@@ -94,6 +95,7 @@ step( T={app, Left, Right}, Mu ) ->
                   {app, {abs_nat, Sign2, subst( X, T21, T12 )}, Right2}         % (12)
               end
           end;
+
         {abs_for, _, _, _, _} ->
           try step_map( maps:keys( Right ), Right, Mu ) of
             Right1 -> {app, Left, Right1}                                       % (10)
@@ -104,6 +106,7 @@ step( T={app, Left, Right}, Mu ) ->
                 false -> throw( enorule )
               end
           end;
+
         {zipwith, Tobj, NameLst, T12} ->
           IsNil = fun
                     IsNil( [], _ ) ->
@@ -140,6 +143,7 @@ step( T={app, Left, Right}, Mu ) ->
               Tl = {app, {zipwith, Tobj, NameLst, T12}, TlRight},
               {cons, Tobj, Hd, Tl}
           end
+          
       end
   end;
 
