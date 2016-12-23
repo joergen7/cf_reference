@@ -103,14 +103,41 @@ step( T={app, Left, Right}, Mu ) ->
                 true  -> Mu( T );                                               % (13)
                 false -> throw( enorule )
               end
-          end
+          end;
+        {zipwith, Tobj, NameLst, T12} ->
+          F = fun( X, Tr ) ->
+                case lists:member( X, NameLst ) of
+                  true  ->
+                    {cons, _, Chd, _} = Tr,
+                    Chd;
+                  false -> Tr
+                end
+              end,
+          G = fun( X, Tr ) ->
+                case lists:member( X, NameLst ) of
+                  true  ->
+                    {cons, _, _, Ctl} = Tr,
+                    Ctl;
+                  false -> Tr
+                end
+              end,
+          HdRight = maps:map( F, Right ),
+          TlRight = maps:map( G, Right ),
+          Hd = {app, T12, HdRight},
+          Tl = {app, {zipwith, Tobj, NameLst, T12}, TlRight},
+          {cons, Tobj, Hd, Tl}
       end
   end;
 
-% TODO: general recursion
+step( T={fix, {abs_nat, Sign, Body}}, _ ) ->
+  [X] = maps:keys( Sign ),
+  subst( X, T, Body );
 
-% TODO: zipwith
+step( {fix, T1}, Mu ) ->
+  {fix, step( T1, Mu )};
 
+step( {zipwith, _, _, _}, _ ) ->
+  throw( enorule );
 
 step( {cnd, true, ThenTm, _ElseTm}, _ ) ->
   ThenTm;
@@ -120,7 +147,6 @@ step( {cnd, false, _ThenTm, ElseTm}, _ ) ->
 
 step( {cnd, IfTm, ThenTm, ElseTm}, Mu ) ->
   {cnd, step( IfTm, Mu ), ThenTm, ElseTm};
-
 
 step( {str, _}, _ ) ->
   throw( enorule );
@@ -233,7 +259,7 @@ type_of( {abs_for, Sign, RetTp, _, _}, _Ctx ) ->
 
 type_of( {app, Left, Right}, Ctx ) ->
 
-  {tabs, _, Sign, Tret} = type_of( Left, Ctx ),
+  {tabs, Tau, Sign, Tret} = type_of( Left, Ctx ),
 
   LeftNameLst = maps:keys( Sign ),
   LeftNameSet = sets:from_list( LeftNameLst ),
@@ -252,19 +278,39 @@ type_of( {app, Left, Right}, Ctx ) ->
         end
       end,
 
+  G = fun( Name ) ->
+        #{ Name := Tp } = Sign,
+        case Tp of
+          {tabs, _, _, _} ->
+            throw( {earg_type, app, {Name, Tp}} );
+          _ -> ok
+        end
+      end,
+
+  % if foreign, check if arguments are of ground types
+  case Tau of
+    for -> lists:foreach( G, LeftNameLst );
+    nat -> ok
+  end,
+
   % check if all arguments on left hand side are bound in right hand side
-  case sets:size( UnboundSet ) of
-    0 -> 
-      % check if all arguments on right hand side are used in left hand side
-      case sets:size( UnusedSet ) of
-        0 ->
-          % check if types match
-          lists:foreach( F, LeftNameLst ),
-          Tret;
-        _ -> throw( {earg_unused, app, sets:to_list( UnusedSet )} )
-      end;
-    _ -> throw( {earg_unbound, app, sets:to_list( UnboundSet )} )
-  end;
+  case sets:size( UnboundSet ) > 0 of
+    true  -> throw( {earg_unbound, app, sets:to_list( UnboundSet )} );
+    false -> ok
+  end,
+
+  % check if all arguments on right hand side are used in left hand side
+  case sets:size( UnusedSet ) > 0 of
+    true  -> throw( {earg_unused, app, sets:to_list( UnusedSet )} );
+    false -> ok
+  end,
+
+  % check if types match
+  lists:foreach( F, LeftNameLst ),
+
+  Tret;
+
+
 
 
 type_of( {fix, T1}, Ctx ) ->
@@ -1279,6 +1325,13 @@ type_of_fut_is_declared_type_test() ->
   T1 = {fut, tbool, 12},
   ?assertEqual( tbool, type_of( T1, #{} ) ).
 
+foreign_call_with_arg_bound_to_abstraction_is_untypable_test() ->
+  A1 = {abs_nat, #{}, {str, "bla"}},
+  A2 = {abs_for, #{"x" => {tabs, nat, #{}, tstr}}, tbool, bash, "blub"},
+  T = {app, A2, #{"x" => A1}},
+  Throw = {earg_type, app, {"x", {tabs, nat, #{}, tstr}}},
+  ?assertThrow( Throw, type_of( T, #{} ) ).
+
 
 %% Step Relation
 
@@ -1355,6 +1408,33 @@ foreign_call_evaluates_right_hand_side_prior_to_generating_future_test() ->
   ?assertEqual( tstr, type_of( T, #{} ) ),
   ?assertEqual( {app, A, #{ "x" => S }}, step( T, ?MU ) ).
 
+fixpoint_is_substituted_into_body_test() ->
+  T = {fix, {abs_nat, #{ "x" => tstr }, {str, "blub"}}},
+  ?assertEqual( tstr, type_of( T, #{} ) ),
+  ?assertEqual( {str, "blub"}, step( T, ?MU ) ).
+
+recursive_function_stays_constant_under_evaluation_test() ->
+  T = {fix, {abs_nat, #{ "x" => tstr }, {var, "x"}}},
+  ?assertEqual( tstr, type_of( T, #{} ) ),
+  ?assertEqual( T, step( T, ?MU ) ).
+
+unevaluated_function_is_evaluated_in_fixpoint_test() ->
+  T1 = {fix, {cnd, true, {abs_nat, #{ "x" => tstr }, {str, "bla"}},
+                         {abs_nat, #{ "x" => tstr }, {str, "blub"}}}},
+  T2 = {fix, {abs_nat, #{ "x" => tstr }, {str, "bla"}}},
+  ?assertEqual( tstr, type_of( T1, #{} ) ),
+  ?assertEqual( T2, step( T1, ?MU ) ).
+
+zipwith_consumes_head_of_target_list_test() ->
+  T12 = {abs_nat, #{ "x" => tbool }, {var, "x"}},
+  Left = {zipwith, tbool, ["x"], T12},
+  Right = #{ "x" => {cons, tbool, true, {cons, tbool, false, {nl, tbool}}} },
+  T1 = {app, Left, Right},
+  App = {app, T12, #{"x" => true}},
+  Rest = {app, Left, #{ "x" => {cons, tbool, false, {nl, tbool}}}},
+  T2 = {cons, tbool, App, Rest},
+  ?assertEqual( {tlst, tbool}, type_of( T1, #{} ) ),
+  ?assertEqual( T2, step( T1, ?MU ) ).
 
 cnd_evaluates_if_term_test() ->
   T1 = {cnd, {cnd, true, true, false}, {str, "bla"}, {str, "blub"}},
