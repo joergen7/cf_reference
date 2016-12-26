@@ -25,7 +25,7 @@
           abs_for/4, file/1, nl/1, true/0, false/0, tup/1, fut/2, proj/2,
           fix/1, zipwith/3] ).
 -export( [tabs_nat/2, tabs_for/2, tlst/1, tstr/0, tbool/0, tfile/0, ttup/1] ).
--export( [as/2, let_bind/4] ).
+-export( [as/2, let_bind/4, select/3] ).
 -export( [is_value/1, type_of/2, eval/2] ).
 
 -include( "cf_reference.hrl" ).
@@ -90,10 +90,25 @@ as( Tm, Tp ) ->
 
 %% @doc Let bindings as derived form.
 
--spec let_bind( X::string(), S::tm(), T::tm(), Ctx::ctx() ) -> tm().
+-spec let_bind( X::string(), Tp::tp(), S::tm(), Tm::tm() ) -> tm().
 
-let_bind( X, S, T, Ctx ) ->
-  {app, {abs_nat, #{ X => type_of( S, Ctx ) }, T}, #{ X => S }}.
+let_bind( X, Tp, S, Tm ) ->
+  {app, {abs_nat, #{ X => Tp }, Tm}, #{ X => S }}.
+
+
+%% @doc Selects the `I` th output channel from a list `TupLst` of result tuples
+%%      of type `TupTp`.
+
+-spec select( TupTp, I, TupLst ) -> tm()
+when TupTp  :: ttup(),
+     I      :: pos_integer(),
+     TupLst :: cons().
+
+select( TupTp={ttup, TpLst}, I, TupLst ) ->
+  X = fresh_name(),
+  Abs = abs_nat( #{ X => TupTp }, proj( I, var( X ) ) ),
+  Tp = lists:nth( I, TpLst ),
+  {app, {zipwith, Tp, [X], Abs}, #{ X => TupLst }}.
   
 
 %%====================================================================
@@ -227,6 +242,9 @@ step( {str, _}, _ ) ->
   throw( enorule );
 
 step( {file, _}, _ ) ->
+  throw( enorule );
+
+step( {nl, _}, _ ) ->
   throw( enorule );
 
 step( {cons, Tp, T1, T2}, Mu ) ->
@@ -1565,6 +1583,9 @@ tail_of_list_is_evaluated_test() ->
   ?assertEqual( {tlst, tstr}, type_of( T1, #{} ) ),
   ?assertEqual( T2, step( T1, ?MU ) ).
 
+nil_is_no_redex_test() ->
+  ?assertThrow( enorule, step( nl( tstr() ), ?MU ) ).
+
 isnil_of_nil_evaluates_to_true_test() ->
   T = {isnil, tstr, {nl, tstr}},
   ?assertEqual( tbool, type_of( T, #{} ) ),
@@ -1684,3 +1705,4 @@ variable_should_not_be_value_test() ->
   ?assertNot( is_value( T ) ).
 
 -endif.
+
