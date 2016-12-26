@@ -37,7 +37,7 @@
 -type abs_nat()  :: {abs_nat, Sign::ctx(), Body::tm()}.
 
 -type abs_for()  :: {abs_for, Sign::uctx(), RetTp::utp(), Lang::lang(),
-                             Body::binary()}.
+                             Script::binary()}.
 
 -type app()      :: {app, Left::tm(), Right:: arg_map()}.
 

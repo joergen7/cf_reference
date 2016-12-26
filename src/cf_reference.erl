@@ -21,7 +21,12 @@
 -module( cf_reference ).
 -author( "Jorgen Brandt <brandjoe@hu-berlin.de>" ).
 
--export( [as/2, let_bind/4, eval/2, type_of/2] ).
+-export( [lst/2, str/1, app/2, var/1, cnd/3, isnil/2, not_isnil/2, abs_nat/2,
+          abs_for/4, file/1, nl/1, true/0, false/0, tup/1, fut/2, proj/2,
+          fix/1, zipwith/3] ).
+-export( [tabs_nat/2, tabs_for/2, tlst/1, tstr/0, tbool/0, tfile/0, ttup/1] ).
+-export( [as/2, let_bind/4] ).
+-export( [is_value/1, type_of/2, eval/2] ).
 
 -include( "cf_reference.hrl" ).
 
@@ -33,18 +38,41 @@
 %% Constructors
 %%====================================================================
 
-lst( Tp, [] )    -> {nl, Tp};
-lst( Tp, [H|T] ) -> {cons, Tp, H, lst( Tp, T )}.
+%% Terms
 
-str( S ) -> {str, S}.
+lst( Tp, [] )                       -> nl( Tp );
+lst( Tp, [H|T] )                    -> {cons, Tp, H, lst( Tp, T )}.
+nl( Tp )                            -> {nl, Tp}.
+str( S )                            -> {str, S}.
+app( Left, Right )                  -> {app, Left, Right}.
+var( X )                            -> {var, X}.
+cnd( If, Then, Else )               -> {cnd, If, Then, Else}.
+isnil( Tp, Tm )                     -> {isnil, Tp, Tm}.
+not_isnil( Tp, Lst )                -> cnd( isnil( Tp, Lst ), false, true ).
+abs_nat( Sign, Body )               -> {abs_nat, Sign, Body}.
+abs_for( Sign, Tret, Lang, Script ) -> {abs_for, Sign, Tret, Lang, Script}.
+file( S )                           -> {file, S}.
+true()                              -> true.
+false()                             -> false.
+tup( TmLst )                        -> {tup, TmLst}.
+fut( Tp, N )                        -> {fut, Tp, N}.
+proj( I, Tm )                       -> {proj, I, Tm}.
+fix( Tm )                           -> {fix, Tm}.
+zipwith( Tret, ArgLst, Tm )         -> {zipwith, Tret, ArgLst, Tm}.
 
-app( Left, Right ) -> {app, Left, Right}.
+%% Types
 
-var( X ) -> {var, X}.
+tabs_nat( Sign, Tret ) -> {tabs, nat, Sign, Tret}.
+tabs_for( Sign, Tret ) -> {tabs, for, Sign, Tret}.
+tlst( T )              -> {tlst, T}.
+tstr()                 -> tstr.
+tbool()                -> tbool.
+tfile()                -> tfile.
+ttup( TpLst )          -> {ttup, TpLst}.
 
-cnd( If, Then, Else ) -> {cnd, If, Then, Else}.
+%% Languages
 
-isnil( Tp, Tm ) -> {isnil, Tp, Tm}.
+bash() -> bash.
 
 
 %%====================================================================
@@ -279,6 +307,7 @@ is_value( {file, _} )              -> true;
 is_value( {nl, _} )                -> true;
 is_value( {cons, _, Hd, Tl} )      -> is_value( Hd ) andalso is_value( Tl );
 is_value( {tup, TmLst} )           -> lists:all( fun is_value/1, TmLst );
+is_value( {zipwith, _, _, _} )     -> true;
 is_value( _ )                      -> false.
 
 
@@ -657,9 +686,9 @@ rename_term( X, {abs_nat, Sign, Body}, Fresh ) ->
   Body1 = rename_term( X, Body, Fresh ),
   {abs_nat, Sign1, Body1};
 
-rename_term( X, {abs_for, Sign, RetTp, Lang, Body}, Fresh ) ->
+rename_term( X, {abs_for, Sign, RetTp, Lang, Script}, Fresh ) ->
   Sign1 = rename_sign( X, Sign, Fresh ),
-  {abs_for, Sign1, RetTp, Lang, Body};
+  {abs_for, Sign1, RetTp, Lang, Script};
 
 rename_term( X, {app, Left, Right}, Fresh ) ->
 
@@ -1567,20 +1596,91 @@ fut_is_no_redex_test() ->
 
 %% Values
 
-str_should_be_value_test() ->
-  S = lst( tstr, [str( "blub" )] ),
-  ?assertEqual( {tlst, tstr}, type_of( S, #{} ) ),
+native_abstraction_should_be_value_test() ->
+  T = abs_nat( #{}, str( "blub" ) ),
+  ?assertEqual( tabs_nat( #{}, tstr() ), type_of( T, #{} ) ),
+  ?assert( is_value( T ) ).
+
+foreign_abstraction_should_be_value_test() ->
+  T = abs_for( #{}, tstr(), bash(), "blub" ),
+  ?assertEqual( tabs_for( #{}, tstr() ), type_of( T, #{} ) ),
+  ?assert( is_value( T ) ).
+
+true_should_be_value_test() ->
+  T = true(),
+  ?assertEqual( tbool(), type_of( T, #{} ) ),
+  ?assert( is_value( T ) ).
+
+false_should_be_value_test() ->
+  T = false(),
+  ?assertEqual( tbool(), type_of( T, #{} ) ),
+  ?assert( is_value( T ) ).
+
+string_list_should_be_value_test() ->
+  S = lst( tstr(), [str( "blub" )] ),
+  ?assertEqual( tlst( tstr() ), type_of( S, #{} ) ),
+  ?assert( is_value( S ) ).
+
+nil_should_be_value_test() ->
+  S = nl( tstr() ),
+  ?assertEqual( tlst( tstr() ), type_of( S, #{} ) ),
+  ?assert( is_value( S ) ).
+
+string_tuple_should_be_value_test() ->
+  T = tup( [str( "bla" ), file( "blub" ), true()] ),
+  ?assertEqual( ttup( [tstr(), tfile(), tbool()] ), type_of( T, #{} ) ),
+  ?assert( is_value( T ) ).
+
+file_should_be_value_test() ->
+  S = file( "blub" ),
+  ?assertEqual( tfile(), type_of( S, #{} ) ),
+  ?assert( is_value( S ) ).
+
+string_should_be_value_test() ->
+  S = str( "blub" ),
+  ?assertEqual( tstr(), type_of( S, #{} ) ),
   ?assert( is_value( S ) ).
 
 app_should_not_be_value_test() ->
   A = app( var( "f" ), #{} ),
-  Ctx = #{ "f" => {tabs, nat, #{}, {tlst, tstr}} },
-  ?assertEqual( {tlst, tstr}, type_of( A, Ctx ) ),
+  Ctx = #{ "f" => tabs_nat( #{}, tlst( tstr() ) ) },
+  ?assertEqual( tlst( tstr() ), type_of( A, Ctx ) ),
   ?assertNot( is_value( A ) ).
 
 cnd_should_not_be_value_test() ->
-  If = cnd( isnil( tstr, lst( tstr, [str( "a" )] ) ), false, true ),
-  C = cnd( If, lst( tstr, [str( "b" )] ), lst( tstr, [str( "c" )] ) ),
+  NotIsNil = not_isnil( tstr(), lst( tstr(), [str( "a" )] ) ),
+  C = cnd( NotIsNil, lst( tstr(), [str( "b" )] ), lst( tstr(), [str( "c" )] ) ),
   ?assertNot( is_value( C ) ).
+
+isnil_should_not_be_value_test() ->
+  T = isnil( tstr(), nl( tstr() ) ),
+  ?assertEqual( tbool(), type_of( T, #{} ) ),
+  ?assertNot( is_value( T ) ).
+
+projection_should_not_be_value_test() ->
+  T = proj( 1, tup( [str( "blub" )] ) ),
+  ?assertEqual( tstr(), type_of( T, #{} ) ),
+  ?assertNot( is_value( T ) ).
+
+future_should_not_be_value_test() ->
+  F = fut( tstr(), 12 ),
+  ?assertEqual( tstr(), type_of( F, #{} ) ),
+  ?assertNot( is_value( F ) ).
+
+fixpoint_operator_should_not_be_value_test() ->
+  T = fix( abs_nat( #{ "x" => tstr() }, str( "blub" ) ) ),
+  ?assertEqual( tstr(), type_of( T, #{} ) ),
+  ?assertNot( is_value( T ) ).
+
+zipwith_operator_should_be_value_test() ->
+  Abs = abs_nat( #{ "x" => tbool() }, str( "blub") ),
+  T = zipwith( tstr(), ["x"], Abs ),
+  ?assertEqual( tabs_nat( #{ "x" => tlst( tbool() ) }, tlst( tstr() ) ), type_of( T, #{} ) ),
+  ?assert( is_value( T ) ).
+
+variable_should_not_be_value_test() ->
+  T = var( "x" ),
+  ?assertEqual( tstr(), type_of( T, #{ "x" => tstr() } ) ),
+  ?assertNot( is_value( T ) ).
 
 -endif.
