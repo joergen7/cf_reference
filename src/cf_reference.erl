@@ -20,7 +20,7 @@
 
 -module( cf_reference ).
 
--export( [str/1, file/1] ).
+-export( [str/1, file/1, arg/3, lambda_ntv/2] ).
 -export( [is_value/1] ).
 
 -ifdef( TEST ).
@@ -42,15 +42,37 @@ str( S ) when is_list( S ) -> {str, S}.
 
 file( S ) when is_list( S ) -> {file, S}.
 
+-spec arg( InName, ExName, Type ) -> {atom(), string(), tp()}
+when InName :: atom(),
+     ExName :: string(),
+     Type   :: tp().
+
+arg( InName, ExName, Type )
+when is_atom( InName ),
+     is_list( ExName ),
+     is_atom( Type ) ->
+  {InName, ExName, Type}.
+
+-spec lambda_ntv( ArgLst, Body ) -> {lambda, ntv, ArgLst, Body}
+when ArgLst :: [arg()],
+     Body   :: e().
+
+lambda_ntv( ArgLst, Body ) when is_list( ArgLst ) ->
+  {lambda, ntv, ArgLst, Body}.
+
+
+
+
 %%====================================================================
 %% Predicates
 %%====================================================================
 
 -spec is_value( E :: e() ) -> boolean().
 
-is_value( {str, _S} )  -> true;
-is_value( {file, _S} ) -> true;
-is_value( _E )         -> false.
+is_value( {str, _S} )                     -> true;
+is_value( {file, _S} )                    -> true;
+is_value( {lambda, ntv, _ArgLst, _Body} ) -> true;
+is_value( _E )                            -> error( malformed_expr ).
 
 
 

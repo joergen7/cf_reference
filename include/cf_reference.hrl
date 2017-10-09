@@ -5,3 +5,7 @@
 -type e() :: {str, string()}
            | {file, string()}.
 
+-type tp() :: 'Str'
+            | 'File'.
+
+-type arg() :: {atom(), string(), tp()}.
