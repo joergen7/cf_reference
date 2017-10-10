@@ -1,5 +1,5 @@
 {application, cf_reference,
- [{description, "An OTP library"},
+ [{description, "A reference implementation of the Cuneiform semantics."},
   {vsn, "0.1.0"},
   {registered, []},
   {applications,
@@ -9,7 +9,9 @@
   {env,[]},
   {modules, []},
 
-  {maintainers, []},
-  {licenses, []},
-  {links, []}
+  {maintainers, ["Jorgen Brandt"]},
+  {licenses, ["Apache 2.0"]},
+  {links, [
+           {"GitHub", "https://github.com/joergen7/cf_reference/"}
+          ]}
  ]}.
