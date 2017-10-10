@@ -3,9 +3,38 @@
 %%====================================================================
 
 -type e() :: {str, string()}
-           | {file, string()}.
+           | {file, string()}
 
--type tp() :: 'Str'
-            | 'File'.
+           | {lambda, ntv, [{atom(), string(), t()}], e()}
+           | {e(), [{string(), e()}]}
 
--type arg() :: {atom(), string(), tp()}.
+           | {lambda, frn, string(), [{atom(), string(), u()}], u(), l(),
+                      string()}
+           | {fut, {{lambda, frn, string(), [{atom(), string(), u()}], u(),
+                             l(), string()},
+                    [{string(), e()}]}}
+
+           | boolean()
+           | {cnd, e(), e(), e()}.
+
+-type v() :: {str, string()}
+           | {file, string()}
+           | {lambda, ntv, [{atom(), string(), t()}], e()}
+           | {lambda, frn, string(), [{atom(), string(), u()}], u(), l(),
+                      string()}
+           | boolean().
+
+-type t() :: 'Str'
+           | 'File'
+           | 'Bool'.
+
+-type u() :: 'Str'
+           | 'File'
+           | 'Bool'.
+
+-type l() :: 'Bash'
+           | 'Octave'
+           | 'Perl'
+           | 'Python'
+           | 'R'.
+

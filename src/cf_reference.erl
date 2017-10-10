@@ -20,8 +20,11 @@
 
 -module( cf_reference ).
 
--export( [str/1, file/1, arg/3, lambda_ntv/2] ).
--export( [is_value/1] ).
+-export( [arg_ntv/3, arg_frn/2, bind/2, str/1, file/1, lambda_ntv/2,
+          lambda_frn/5, app/2, fut/1, true/0, false/0, cnd/3] ).
+-export( [t_arg/2, t_str/0, t_file/0, t_bool/0, t_fn/3] ).
+-export( [l_bash/0, l_octave/0, l_perl/0, l_python/0, l_r/0] ).
+-export( [is_value/1, type/2] ).
 
 -ifdef( TEST ).
 -include_lib( "eunit/include/eunit.hrl" ).
@@ -31,36 +34,164 @@
 
 
 %%====================================================================
-%% Term constructors
+%% Expression constructors
 %%====================================================================
+
+-spec arg_ntv( InName, ExName, Type ) -> {atom(), string(), t()}
+when InName :: atom(),
+     ExName :: string(),
+     Type   :: t().
+
+arg_ntv( InName, ExName, Type )
+when is_atom( InName ),
+     is_list( ExName ) ->
+  {InName, ExName, Type}.
+
+
+-spec arg_frn( ExName :: string(), Type   :: t() ) -> {string(), t()}.
+
+arg_frn( ExName, Type ) when is_list( ExName ) -> {ExName, Type}.
+
+
+-spec bind( ExName, Expr ) -> {string(), e()}
+when ExName :: string(),
+     Expr   :: e().
+
+bind( ExName, Expr )
+when is_list( ExName ) ->
+  {ExName, Expr}.
+
 
 -spec str( S :: string() ) -> {str, string()}.
 
 str( S ) when is_list( S ) -> {str, S}.
 
+
 -spec file( S :: string() ) -> {file, string()}.
 
 file( S ) when is_list( S ) -> {file, S}.
 
--spec arg( InName, ExName, Type ) -> {atom(), string(), tp()}
-when InName :: atom(),
-     ExName :: string(),
-     Type   :: tp().
-
-arg( InName, ExName, Type )
-when is_atom( InName ),
-     is_list( ExName ),
-     is_atom( Type ) ->
-  {InName, ExName, Type}.
 
 -spec lambda_ntv( ArgLst, Body ) -> {lambda, ntv, ArgLst, Body}
-when ArgLst :: [arg()],
+when ArgLst :: [{atom(), string(), t()}],
      Body   :: e().
 
 lambda_ntv( ArgLst, Body ) when is_list( ArgLst ) ->
   {lambda, ntv, ArgLst, Body}.
 
 
+-spec lambda_frn( LamName, ArgLst, RetType, Lang, BodyStr ) ->
+  {lambda, frn, string(), [{atom(), string(), u()}], t(), l(), string()}
+when LamName :: string(),
+     ArgLst  :: [{atom(), string(), u()}],
+     RetType :: t(),
+     Lang    :: l(),
+     BodyStr :: string().
+
+lambda_frn( LamName, ArgLst, RetType, Lang, BodyStr )
+when is_list( LamName ),
+     is_list( ArgLst ),
+     is_atom( RetType ),
+     is_atom( Lang ),
+     is_list( BodyStr ) ->
+  {lambda, frn, LamName, ArgLst, RetType, Lang, BodyStr}.
+
+
+-spec app( Lambda, BindLst ) -> {e(), [{string(), e()}]}
+when Lambda  :: e(),
+     BindLst :: [{string(), e()}].
+
+app( Lambda, BindLst ) when is_list( BindLst ) ->
+  {Lambda, BindLst}.
+
+
+-spec fut( App ) -> Fut
+when App :: {{lambda, frn, string(), [{atom(), string(), u()}], u(),
+                      l(), string()},
+             [{string(), e()}]},
+     Fut :: {fut, {{lambda, frn, string(), [{atom(), string(), u()}], u(),
+                            l(), string()},
+                   [{string(), e()}]}}.
+
+fut( App = {{lambda, frn, LamName, ArgLst, _RetType, Lang, BodyStr}, BindLst} )
+when is_list( LamName ),
+     is_list( ArgLst ),
+     is_atom( Lang ),
+     is_list( BodyStr ),
+     is_list( BindLst ) ->
+  {fut, App}.
+
+
+-spec true() -> true.
+
+true() -> true.
+
+
+-spec false() -> false.
+
+false() -> false.
+
+
+-spec cnd( EIf :: e(), EThen :: e(), EElse :: e() ) -> {cnd, e(), e(), e()}.
+
+cnd( EIf, EThen, EElse ) -> {cnd, EIf, EThen, EElse}.
+
+
+%%====================================================================
+%% Type constructors
+%%====================================================================
+
+-spec t_arg( ExName :: string(), Type   :: t() ) -> {string(), t()}.
+
+t_arg( ExName, Type ) when is_list( ExName ) -> {ExName, Type}.
+
+
+-spec t_str() -> 'Str'.
+
+t_str() -> 'Str'.
+
+
+-spec t_file() -> 'File'.
+
+t_file() -> 'File'.
+
+
+-spec t_bool() -> 'Bool'.
+
+t_bool() -> 'Bool'.
+
+
+-spec t_fn( Tau, TArgLst, RetType ) -> {'Fn', ntv | frn, [{string(), t()}], t()}
+when Tau     :: ntv | frn,
+     TArgLst :: [{string(), t()}],
+     RetType :: t().
+
+t_fn( Tau, TArgLst, RetType )
+when is_atom( Tau ),
+     is_list( TArgLst ) ->
+  {'Fn', Tau, TArgLst, RetType}.
+     
+
+
+
+%%====================================================================
+%% Language id constructors
+%%====================================================================
+
+-spec l_bash() -> 'Bash'.
+l_bash() -> 'Bash'.
+
+-spec l_octave() -> 'Octave'.
+l_octave() -> 'Octave'.
+
+-spec l_perl() -> 'Perl'.
+l_perl() -> 'Perl'.
+
+-spec l_python() -> 'Python'.
+l_python() -> 'Python'.
+
+-spec l_r() -> 'R'.
+l_r() -> 'R'.
 
 
 %%====================================================================
@@ -69,10 +200,82 @@ lambda_ntv( ArgLst, Body ) when is_list( ArgLst ) ->
 
 -spec is_value( E :: e() ) -> boolean().
 
-is_value( {str, _S} )                     -> true;
-is_value( {file, _S} )                    -> true;
-is_value( {lambda, ntv, _ArgLst, _Body} ) -> true;
-is_value( _E )                            -> error( malformed_expr ).
+is_value( {str, _S} )                                       -> true;
+is_value( {file, _S} )                                      -> true;
+is_value( E ) when is_boolean( E )                          -> true;
+is_value( X ) when is_atom( X )                             -> false;
+is_value( {lambda, ntv, _ArgLst, _Body} )                   -> true;
+is_value( {_E, BindLst} ) when is_list( BindLst )           -> false;
+is_value( {lambda, frn, _, _, _, _, _} )                    -> true;
+is_value( {fut, {{lambda, frn, _, _, _, _, _}, _BindLst}} ) -> false;
+is_value( {cnd, _EEif, _EThen, _EElse} )                    -> false;
+is_value( E ) -> error( {malformed_expr, E} ).
 
+
+%%====================================================================
+%% Type Checker
+%%====================================================================
+
+-spec type( Gamma :: #{ atom() => t() }, E :: e() ) -> {ok, t()} | error.
+
+type( _Gamma, {str, _S} ) ->
+  {ok, t_str()};
+
+type( _Gamma, {file, _S} ) ->
+  {ok, t_file()};
+
+type( Gamma, X ) when is_atom( X ) ->
+  case maps:is_key( X, Gamma ) of
+  	true  -> {ok, maps:get( X, Gamma )};
+  	false -> error
+  end;
+
+type( Gamma, {lambda, ntv, ArgLst, Body} ) ->
+
+  Gamma1 = maps:merge( Gamma,
+                       maps:from_list( [{X, T} || {X, _S, T} <- ArgLst] ) ),
+
+  case type( Gamma1, Body ) of
+
+  	error         -> error;
+
+  	{ok, RetType} ->
+      TArgLst = [{S, T} || {_X, S, T} <- ArgLst],
+  	  {ok, t_fn( ntv, TArgLst, RetType )}
+
+  end;
+
+type( _Gamma, {lambda, frn, _LamName, ArgLst, RetType, _Lang, _BodyStr} ) ->
+  {ok, t_fn( frn, ArgLst, RetType )};
+
+type( Gamma, {EFn, BindLst} ) ->
+
+  P = fun
+
+        ( {{ArgName, ArgType}, {ArgName, BindExpr}} ) ->
+          case type( Gamma, BindExpr ) of
+            error         -> false;
+            {ok, ArgType} -> true % ;
+            % {ok, _}       -> false
+          end % ;
+
+        % ( {{ArgName, _}, {BindName, _}} ) ->
+        %   false
+
+      end,
+
+
+  case type( Gamma, EFn ) of
+  	error                               -> error;
+    {ok, {'Fn', _Tau, ArgLst, RetType}} ->
+      case lists:all( P, lists:zip( ArgLst, BindLst ) ) of
+        true  -> {ok, RetType};
+        false -> error
+      end
+  end;
+
+
+type( _Gamma, E ) ->
+  error( {malformed_expr, E} ).
 
 
