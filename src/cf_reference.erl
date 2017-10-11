@@ -24,7 +24,7 @@
           lambda_frn/5, app/2, fut/1, true/0, false/0, cnd/3] ).
 -export( [t_arg/2, t_str/0, t_file/0, t_bool/0, t_fn/3] ).
 -export( [l_bash/0, l_octave/0, l_perl/0, l_python/0, l_r/0] ).
--export( [is_value/1, type/2] ).
+-export( [is_value/1, type/2, step/1] ).
 
 -ifdef( TEST ).
 -include_lib( "eunit/include/eunit.hrl" ).
@@ -218,19 +218,22 @@ is_value( E ) -> error( {malformed_expr, E} ).
 
 -spec type( Gamma :: #{ atom() => t() }, E :: e() ) -> {ok, t()} | error.
 
-type( _Gamma, {str, _S} ) ->
+type( _Gamma, {str, _S} ) ->                                    % T-str
   {ok, t_str()};
 
-type( _Gamma, {file, _S} ) ->
+type( _Gamma, {file, _S} ) ->                                   % T-file
   {ok, t_file()};
 
-type( Gamma, X ) when is_atom( X ) ->
+type( _Gamma, B ) when is_boolean( B ) ->                       % T-true/T-false
+  {ok, t_bool()};
+
+type( Gamma, X ) when is_atom( X ) ->                           % T-var
   case maps:is_key( X, Gamma ) of
   	true  -> {ok, maps:get( X, Gamma )};
   	false -> error
   end;
 
-type( Gamma, {lambda, ntv, ArgLst, Body} ) ->
+type( Gamma, {lambda, ntv, ArgLst, Body} ) ->                   % T-lambda-ntv
 
   Gamma1 = maps:merge( Gamma,
                        maps:from_list( [{X, T} || {X, _S, T} <- ArgLst] ) ),
@@ -245,37 +248,85 @@ type( Gamma, {lambda, ntv, ArgLst, Body} ) ->
 
   end;
 
-type( _Gamma, {lambda, frn, _LamName, ArgLst, RetType, _Lang, _BodyStr} ) ->
+type( _Gamma, {lambda, frn, _, ArgLst, RetType, _, _} ) ->      % T-lambda-frn
   {ok, t_fn( frn, ArgLst, RetType )};
 
-type( Gamma, {EFn, BindLst} ) ->
+type( Gamma, {EFn, BindLst} ) when is_list( BindLst ) ->        % T-app
 
   P = fun
 
         ( {{ArgName, ArgType}, {ArgName, BindExpr}} ) ->
           case type( Gamma, BindExpr ) of
             error         -> false;
-            {ok, ArgType} -> true % ;
-            % {ok, _}       -> false
-          end % ;
+            {ok, ArgType} -> true;
+            {ok, _}       -> false
+          end;
 
-        % ( {{ArgName, _}, {BindName, _}} ) ->
-        %   false
+        ( {{_, _}, {_, _}} ) ->
+          false
 
       end,
-
 
   case type( Gamma, EFn ) of
   	error                               -> error;
     {ok, {'Fn', _Tau, ArgLst, RetType}} ->
-      case lists:all( P, lists:zip( ArgLst, BindLst ) ) of
-        true  -> {ok, RetType};
-        false -> error
+      case length( ArgLst ) =:= length( BindLst ) of
+        false -> error;
+        true  ->
+          case lists:all( P, lists:zip( ArgLst, BindLst ) ) of
+            true  -> {ok, RetType};
+            false -> error
+          end
       end
   end;
 
+type( _, {fut, {{lambda, frn, _, _, RetType, _, _}, _}} ) ->    % T-fut
+  {ok, RetType};
+
+type( Gamma, {cnd, EIf, EThen, EElse} ) ->                      % T-if
+  case type( Gamma, EIf ) of
+    error        -> error;
+    {ok, 'Bool'} ->
+      case type( Gamma, EThen ) of
+        error       -> error;
+        {ok, TThen} ->
+          case type( Gamma, EElse ) of
+            error       -> error;
+            {ok, TThen} -> {ok, TThen};
+            {ok, _}     -> error
+          end
+      end;
+    {ok, _}      -> error
+  end;
 
 type( _Gamma, E ) ->
   error( {malformed_expr, E} ).
 
 
+%%====================================================================
+%% Evaluation
+%%====================================================================
+
+-spec try_step( E :: e() ) -> norule.
+
+try_step( {str, _S} ) -> norule;
+
+try_step( {file, _S} ) -> norule;
+
+try_step( {lambda, ntv, _ArgLst, _Body} ) -> norule;
+
+try_step( {{lambda, ntv, [], E}, []} ) ->                       % E-beta-base
+  throw( E );
+
+try_step( _E ) -> error( undefined_behavior ).
+
+
+-spec step( E :: e() ) -> {ok, e()} | norule.
+
+step( E ) ->
+
+  try
+    try_step( E )
+  catch
+    throw : E1 -> {ok, E1}
+  end.
