@@ -7,7 +7,7 @@
                         false/0, cnd/3] ).
 -import( cf_reference, [t_arg/2, t_str/0, t_file/0, t_bool/0, t_fn/3] ).
 -import( cf_reference, [l_bash/0] ).
--import( cf_reference, [is_value/1, type/2, step/1] ).
+-import( cf_reference, [is_value/1, type/2, step/1, subst/3] ).
 
 
 -define( E_LAMBDA1, lambda_ntv( [arg_ntv( x, "x", t_str() ),
@@ -329,6 +329,76 @@ condition_typable_if_else_expression_accesses_closure() ->
   ?assertEqual( {ok, t_str()}, type( Gamma, E ) ).
 
 
+subst_test_() ->
+  {foreach,
+
+   fun() -> ok end,
+   fun( _ ) -> ok end,
+
+   [
+    {"subst leaves str unchanged",   fun subst_leaves_str_unchanged/0},
+    {"subst leaves file unchanged",  fun subst_leaves_file_unchanged/0},
+    {"subst leaves true unchanged",  fun subst_leaves_true_unchanged/0},
+    {"subst leaves false unchanged", fun subst_leaves_false_unchanged/0},
+
+    {"subst replaces if variable match",
+     fun subst_replaces_if_variable_match/0},
+
+    {"subst leaves unchanged if variable mismatch",
+     fun subst_leaves_unchanged_if_variable_mismatch/0},
+
+    {"subst continues in function expr of app",
+     fun subst_continues_in_function_expr_of_app/0},
+
+    {"subst continues in arg expr of app",
+     fun subst_continues_in_arg_expr_of_app/0},
+
+    {"subst continues in native function body",
+     fun subst_continues_in_native_function_body/0},
+
+    {"native function arg shadows subst",
+     fun native_function_arg_shadows_subst/0}
+
+    % TODO: capture avoiding
+   ]
+  }.
+
+subst_leaves_str_unchanged() ->
+  E = str( "bla" ),
+  ?assertEqual( E, subst( E, x, y ) ).
+
+subst_leaves_file_unchanged() ->
+  E = file( "bla" ),
+  ?assertEqual( E, subst( E, x, y ) ).
+
+subst_leaves_true_unchanged() ->
+  E = true(),
+  ?assertEqual( E, subst( E, x, y ) ).
+
+subst_leaves_false_unchanged() ->
+  E = false(),
+  ?assertEqual( E, subst( E, x, y ) ).
+
+subst_replaces_if_variable_match() ->
+  ?assertEqual( y, subst( x, x, y ) ).
+
+subst_leaves_unchanged_if_variable_mismatch() ->
+  ?assertEqual( x, subst( x, y, z ) ).
+
+subst_continues_in_function_expr_of_app() ->
+  ?assertEqual( app( y, [] ), subst( app( x, [] ), x, y ) ).
+
+subst_continues_in_arg_expr_of_app() ->
+  ?assertEqual( app( f, [bind( "x", y )] ),
+                subst( app( f, [bind( "x", x )] ), x, y ) ).
+
+subst_continues_in_native_function_body() ->
+  ?assertEqual( lambda_ntv( [], y ), subst( lambda_ntv( [], x ), x, y ) ).
+
+native_function_arg_shadows_subst() ->
+  ?assertEqual( ?E_LAMBDA_ID, subst( ?E_LAMBDA_ID, x, y ) ).
+
+
 step_test_() ->
   {foreach,
 
@@ -359,4 +429,3 @@ native_function_body_is_left_alone() ->
 constant_function_evaluates_value() ->
   ?assertEqual( {ok, str( "blub" )}, step( app( ?E_LAMBDA_CONST, [] ) ) ).
 
-  

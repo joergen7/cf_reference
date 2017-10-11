@@ -24,7 +24,7 @@
           lambda_frn/5, app/2, fut/1, true/0, false/0, cnd/3] ).
 -export( [t_arg/2, t_str/0, t_file/0, t_bool/0, t_fn/3] ).
 -export( [l_bash/0, l_octave/0, l_perl/0, l_python/0, l_r/0] ).
--export( [is_value/1, type/2, step/1] ).
+-export( [is_value/1, type/2, step/1, subst/3] ).
 
 -ifdef( TEST ).
 -include_lib( "eunit/include/eunit.hrl" ).
@@ -302,6 +302,32 @@ type( Gamma, {cnd, EIf, EThen, EElse} ) ->                      % T-if
 type( _Gamma, E ) ->
   error( {malformed_expr, E} ).
 
+%%====================================================================
+%% Substitution
+%%====================================================================
+
+
+-spec subst( M :: e(), X :: atom(), N :: e() ) -> e().
+
+subst( {str, S}, _X, _N )                    -> {str, S};
+subst( {file, S}, _X, _N )                   -> {file, S};
+subst( M, _X, _N ) when is_boolean( M )      -> M;
+subst( X, X, N ) when is_atom( X )           -> N;
+subst( X, _Y, _N ) when is_atom( X )         -> X;
+
+subst( {F, BindLst}, X, N ) ->
+  {subst( F, X, N ), [{S, subst( A, X, N )} || {S, A} <- BindLst]};
+
+subst( {lambda, ntv, ArgLst, Body}, X, N ) ->
+
+  InNameLst = [Y || {Y, _S, _T} <- ArgLst],
+
+  case lists:member( X, InNameLst ) of
+    true  -> {lambda, ntv, ArgLst, Body};
+    false -> {lambda, ntv, ArgLst, subst( Body, X, N )}
+  end;
+
+subst( _M, _X, _N ) -> error( bad_substition ).
 
 %%====================================================================
 %% Evaluation
