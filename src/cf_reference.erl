@@ -24,7 +24,8 @@
           lambda_frn/5, app/2, fut/1, true/0, false/0, cnd/3] ).
 -export( [t_arg/2, t_str/0, t_file/0, t_bool/0, t_fn/3] ).
 -export( [l_bash/0, l_octave/0, l_perl/0, l_python/0, l_r/0] ).
--export( [is_value/1, type/2, step/1, subst/3] ).
+-export( [is_value/1, type/2, step/1] ).
+-export( [gensym/1, rename/3, subst/3] ).
 
 -ifdef( TEST ).
 -include_lib( "eunit/include/eunit.hrl" ).
@@ -299,12 +300,50 @@ type( Gamma, {cnd, EIf, EThen, EElse} ) ->                      % T-if
     {ok, _}      -> error
   end;
 
-type( _Gamma, E ) ->
-  error( {malformed_expr, E} ).
+type( Gamma, E ) -> error( {malformed_expr, type, Gamma, E} ).
 
 %%====================================================================
 %% Substitution
 %%====================================================================
+
+-spec gensym( X :: atom() ) -> atom().
+
+gensym( X ) when is_atom( X ) ->
+  [S1|_] = string:tokens( atom_to_list( X ), "$" ),
+  N = erlang:unique_integer( [positive, monotonic] ),
+  S2 = [$$|integer_to_list( N )],
+  list_to_atom( S1++S2 ).
+
+
+-spec rename( M :: e(), X :: atom(), Y :: atom() ) -> e().
+
+rename( {str, S}, _X, _Y )               -> {str, S};
+rename( {file, S}, _X, _Y )              -> {file, S};
+rename( M, _X, _Y ) when is_boolean( M ) -> M;
+rename( X, X, Y ) when is_atom( X )      -> Y;
+rename( X, _Y, _Z ) when is_atom( X )    -> X;
+
+rename( {lambda, ntv, ArgLst, Body}, X, Y ) ->
+
+  F = fun
+        ( {X1, S, T} ) when X1 =:= X -> {Y, S, T};
+        ( Arg )                      -> Arg
+      end,
+
+  {lambda, ntv, [F( Arg ) || Arg <- ArgLst], rename( Body, X, Y )};
+
+rename( M = {lambda, frn, _, _, _, _, _}, _X, _Y ) -> M;
+
+rename( {Fn, BindLst}, X, Y ) when is_list( BindLst ) ->
+  BindLst1 = [{S, rename( E, X, Y )} || {S, E} <- BindLst],
+  {rename( Fn, X, Y ), BindLst1};
+
+rename( {fut, E}, _X, _Y ) -> {fut, E};
+
+rename( {cnd, EIf, EThen, EElse}, X, Y ) ->
+  {cnd, rename( EIf, X, Y), rename( EThen, X, Y ), rename( EElse, X, Y )};
+
+rename( M, X, Y ) -> error( {malformed_expr, rename, M, X, Y} ).
 
 
 -spec subst( M :: e(), X :: atom(), N :: e() ) -> e().
@@ -315,19 +354,40 @@ subst( M, _X, _N ) when is_boolean( M )      -> M;
 subst( X, X, N ) when is_atom( X )           -> N;
 subst( X, _Y, _N ) when is_atom( X )         -> X;
 
-subst( {F, BindLst}, X, N ) ->
+subst( {F, BindLst}, X, N ) when is_list( BindLst ) ->
   {subst( F, X, N ), [{S, subst( A, X, N )} || {S, A} <- BindLst]};
 
-subst( {lambda, ntv, ArgLst, Body}, X, N ) ->
+subst( Lambda = {lambda, ntv, ArgLst, Body}, X, N ) ->
+
+  F = fun( {AX, AS, AT}, {lambda, ntv, AArgLst, ABody} ) ->
+        AX1 = gensym( AX ),
+        ABody1 = rename( ABody, AX, AX1 ),
+        {lambda, ntv, [{AX1, AS, AT}|AArgLst], ABody1}
+      end,
 
   InNameLst = [Y || {Y, _S, _T} <- ArgLst],
 
   case lists:member( X, InNameLst ) of
-    true  -> {lambda, ntv, ArgLst, Body};
-    false -> {lambda, ntv, ArgLst, subst( Body, X, N )}
+    true  -> Lambda;
+    false ->
+      
+      Lambda1 = lists:foldl( F, {lambda, ntv, [], Body}, ArgLst ),
+      {lambda, ntv, ArgLst1, Body1} = Lambda1,
+
+      {lambda, ntv, ArgLst1, subst( Body1, X, N )}
   end;
 
-subst( _M, _X, _N ) -> error( bad_substition ).
+subst( Lambda = {lambda, frn, _, _, _, _, _}, _X, _N ) ->
+  Lambda;
+
+subst( {fut, E}, _X, _N ) ->
+  {fut, E};
+
+subst( {cnd, EIf, EThen, EElse}, X, N ) ->
+  {cnd, subst( EIf, X, N ), subst( EThen, X, N ), subst( EElse, X, N )};
+
+subst( M, X, N ) -> error( {malformed_expr, subst, M, X, N} ).
+
 
 %%====================================================================
 %% Evaluation

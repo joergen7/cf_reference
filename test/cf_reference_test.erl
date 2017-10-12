@@ -7,7 +7,8 @@
                         false/0, cnd/3] ).
 -import( cf_reference, [t_arg/2, t_str/0, t_file/0, t_bool/0, t_fn/3] ).
 -import( cf_reference, [l_bash/0] ).
--import( cf_reference, [is_value/1, type/2, step/1, subst/3] ).
+-import( cf_reference, [is_value/1, type/2, step/1] ).
+-import( cf_reference, [gensym/1, rename/3, subst/3] ).
 
 
 -define( E_LAMBDA1, lambda_ntv( [arg_ntv( x, "x", t_str() ),
@@ -278,7 +279,6 @@ application_with_foreign_function_typable() ->
 future_typable() ->
   ?assertEqual( {ok, t_str()}, type( #{}, fut( ?E_APP_GREET ) ) ).
 
-
 bool_can_be_return_type_of_foreign_function() ->
   T = t_fn( frn, [], t_bool() ),
   E = lambda_frn( "test", [], t_bool(), l_bash(), "lala" ),
@@ -329,6 +329,142 @@ condition_typable_if_else_expression_accesses_closure() ->
   ?assertEqual( {ok, t_str()}, type( Gamma, E ) ).
 
 
+gensym_test_() ->
+  {foreach,
+
+   fun() -> ok end,
+   fun( _ ) -> ok end,
+
+   [
+    {"gensym adds unique number to var",
+     fun gensym_adds_unique_number_to_var/0},
+
+    {"gensym replaces unique number instead of appending",
+     fun gensym_replaces_unique_number_instead_of_appending/0}
+   ]
+  }.
+
+gensym_adds_unique_number_to_var() ->
+  X = gensym( blub ),
+  [A, _] = string:tokens( atom_to_list( X ), "$" ),
+  ?assertEqual( "blub", A ).
+
+gensym_replaces_unique_number_instead_of_appending() ->
+  X1 = gensym( blub ),
+  X2 = gensym( X1 ),
+  [A, _] = string:tokens( atom_to_list( X2 ), "$" ),
+  ?assertEqual( "blub", A ).
+
+
+rename_test_() ->
+  {foreach,
+
+   fun() -> ok end,
+   fun( _ ) -> ok end,
+
+   [
+    {"rename leaves str unchanged",   fun rename_leaves_str_unchanged/0},
+    {"rename leaves file unchanged",  fun rename_leaves_file_unchanged/0},
+    {"rename leaves true unchanged",  fun rename_leaves_true_unchanged/0},
+    {"rename leaves false unchanged", fun rename_leaves_false_unchanged/0},
+    {"rename alters matching var",    fun rename_alters_matching_var/0},
+
+    {"rename leaves mismatching var unchanged",
+     fun rename_leaves_mismatching_var_unchanged/0},
+
+    {"rename leaves native function mismatching name unchanged",
+     fun rename_leaves_native_function_mismatching_name_unchanged/0},
+
+    {"rename alters native function arg list",
+     fun rename_alters_native_function_arg_list/0},
+
+    {"rename alters native function body",
+     fun rename_alters_native_function_body/0},
+
+    {"rename leaves foreign function unchanged",
+     fun rename_leaves_foreign_function_unchanged/0},
+
+    {"rename traverses application function expr",
+     fun rename_traverses_application_function_expr/0},
+
+    {"rename traverses application binding list",
+     fun rename_traverses_application_binding_list/0},
+
+    {"rename leaves fut unchanged",   fun rename_leaves_fut_unchanged/0},
+
+    {"rename traverses condition if expr",
+     fun rename_traverses_condition_if_expr/0},
+
+    {"rename traverses condition then expr",
+     fun rename_traverses_condition_then_expr/0},
+
+    {"rename traverses condition else expr",
+     fun rename_traverses_condition_else_expr/0}
+   ]
+  }.
+
+rename_leaves_str_unchanged() ->
+  E = str( "bla" ),
+  ?assertEqual( E, rename( E, x, y ) ).
+
+rename_leaves_file_unchanged() ->
+  E = file( "bla" ),
+  ?assertEqual( E, rename( E, x, y ) ).
+
+rename_leaves_true_unchanged() ->
+  E = true(),
+  ?assertEqual( E, rename( E, x, y ) ).
+
+rename_leaves_false_unchanged() ->
+  E = false(),
+  ?assertEqual( E, rename( E, x, y ) ).
+
+rename_alters_matching_var() ->
+  ?assertEqual( y, rename( x, x, y ) ).
+
+rename_leaves_mismatching_var_unchanged() ->
+  ?assertEqual( x, rename( x, y, z ) ).
+
+rename_leaves_native_function_mismatching_name_unchanged() ->
+  ?assertEqual( lambda_ntv( [arg_ntv( a, "a", t_str() )], x ),
+                rename( lambda_ntv( [arg_ntv( a, "a", t_str() )], x ), b, c ) ).
+
+rename_alters_native_function_arg_list() ->
+  ?assertEqual( lambda_ntv( [arg_ntv( b, "a", t_str() )], x ),
+                rename( lambda_ntv( [arg_ntv( a, "a", t_str() )], x ), a, b ) ).
+
+rename_alters_native_function_body() ->
+  ?assertEqual( lambda_ntv( [], y ), rename( lambda_ntv( [], x ), x, y ) ).
+
+rename_leaves_foreign_function_unchanged() ->
+  E = ?E_LAMBDA_GREET,
+  ?assertEqual( E, rename( E, x, y ) ).
+
+rename_traverses_application_function_expr() ->
+  E = app( lambda_ntv( [], x ), [] ),
+  ?assertEqual( app( lambda_ntv( [], y ), [] ), rename( E, x, y ) ).
+
+rename_traverses_application_binding_list() ->
+  F = lambda_ntv( [arg_ntv( x, "x", t_str() )], x ),
+  E = app( F, [bind( "x", y )] ),
+  ?assertEqual( app( F, [bind( "x", z )] ), rename( E, y, z ) ).
+
+rename_leaves_fut_unchanged() ->
+  E = fut( ?E_APP_GREET ),
+  ?assertEqual( E, rename( E, x, y ) ).
+
+rename_traverses_condition_if_expr() ->
+  ?assertEqual( cnd( y, true(), false() ),
+                rename( cnd( x, true(), false() ), x, y ) ).
+
+rename_traverses_condition_then_expr() ->
+  ?assertEqual( cnd( true(), y, false() ),
+                rename( cnd( true(), x, false() ), x, y ) ).
+
+rename_traverses_condition_else_expr() ->
+  ?assertEqual( cnd( true(), true(), y ),
+                rename( cnd( true(), true(), x ), x, y ) ).
+
 subst_test_() ->
   {foreach,
 
@@ -356,10 +492,24 @@ subst_test_() ->
     {"subst continues in native function body",
      fun subst_continues_in_native_function_body/0},
 
-    {"native function arg shadows subst",
-     fun native_function_arg_shadows_subst/0}
+    {"subst native function arg shadowed",
+     fun subst_native_function_arg_shadowed/0},
 
-    % TODO: capture avoiding
+    {"subst capture avoiding",       fun subst_capture_avoiding/0},
+
+    {"subst leaves foreign function unchanged",
+     fun subst_leaves_foreign_function_unchanged/0},
+
+    {"subst leaves fut unchanged",   fun subst_leaves_fut_unchanged/0},
+
+    {"subst traverses condition if expr",
+     fun subst_traverses_condition_if_expr/0},
+
+    {"subst traverses condition then expr",
+     fun subst_traverses_condition_then_expr/0},
+
+    {"subst traverses condition else expr",
+     fun subst_traverses_condition_else_expr/0}
    ]
   }.
 
@@ -393,10 +543,40 @@ subst_continues_in_arg_expr_of_app() ->
                 subst( app( f, [bind( "x", x )] ), x, y ) ).
 
 subst_continues_in_native_function_body() ->
-  ?assertEqual( lambda_ntv( [], y ), subst( lambda_ntv( [], x ), x, y ) ).
+  ?assertMatch( {lambda, ntv, [], y}, subst( lambda_ntv( [], x ), x, y ) ),
+  ?assertMatch( {lambda, ntv, [{_, "a", 'Str'}], y},
+                subst( lambda_ntv( [{a, "a", t_str()}], x ), x, y ) ).
 
-native_function_arg_shadows_subst() ->
+subst_native_function_arg_shadowed() ->
   ?assertEqual( ?E_LAMBDA_ID, subst( ?E_LAMBDA_ID, x, y ) ).
+
+subst_capture_avoiding() ->
+  E1 = lambda_ntv( [arg_ntv( y, "y", t_str() )], x ),
+  E2 = subst( E1, x, y ),
+  {lambda, ntv, [{A, "y", 'Str'}], B} = E2,
+  ?assertNotEqual( A, B ).
+
+subst_leaves_foreign_function_unchanged() ->
+  E = ?E_LAMBDA_GREET,
+  ?assertEqual( E, subst( E, x, y ) ).
+
+subst_leaves_fut_unchanged() ->
+  E = fut( ?E_APP_GREET ),
+  ?assertEqual( E, subst( E, x, y ) ).
+
+subst_traverses_condition_if_expr() ->
+  ?assertEqual( cnd( y, true(), false() ),
+                subst( cnd( x, true(), false() ), x, y ) ).
+
+subst_traverses_condition_then_expr() ->
+  ?assertEqual( cnd( true(), y, false() ),
+                subst( cnd( true(), x, false() ), x, y ) ).
+
+subst_traverses_condition_else_expr() ->
+  ?assertEqual( cnd( true(), true(), y ),
+                subst( cnd( true(), true(), x ), x, y ) ).
+
+
 
 
 step_test_() ->
