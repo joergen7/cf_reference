@@ -24,7 +24,7 @@
           lambda_frn/5, app/2, fut/1, true/0, false/0, cnd/3] ).
 -export( [t_arg/2, t_str/0, t_file/0, t_bool/0, t_fn/3] ).
 -export( [l_bash/0, l_octave/0, l_perl/0, l_python/0, l_r/0] ).
--export( [is_value/1, type/2, step/1] ).
+-export( [is_value/1, type/2, step/1, eval/1] ).
 -export( [gensym/1, rename/3, subst/3] ).
 
 -ifdef( TEST ).
@@ -395,16 +395,37 @@ subst( M, X, N ) -> error( {malformed_expr, subst, M, X, N} ).
 
 -spec try_step( E :: e() ) -> norule.
 
-try_step( {str, _S} ) -> norule;
 
-try_step( {file, _S} ) -> norule;
+%% no rule applies
 
+try_step( {str, _S} )                     -> norule;
+try_step( {file, _S} )                    -> norule;
 try_step( {lambda, ntv, _ArgLst, _Body} ) -> norule;
+try_step( {fut, _E} )                     -> norule;
+try_step( true )                          -> norule;
+try_step( false )                         -> norule;
+
+
+%% notion of reduction
 
 try_step( {{lambda, ntv, [], E}, []} ) ->                       % E-beta-base
   throw( E );
 
-try_step( _E ) -> error( undefined_behavior ).
+try_step( {{lambda, ntv, [{X, _S, _T}|ArgLst], Body},           % E-beta
+           [{_S, E}|BindLst]} ) ->
+  throw( {{lambda, ntv, ArgLst, subst( Body, X, E )}, BindLst} );
+
+
+%% congruence rules
+
+try_step( {F, BindLst} ) ->
+  {ok, F1} = step( F ),
+  throw( {F1, BindLst} );
+
+
+%% catch-all
+
+try_step( E ) -> error( {undefined_behavior, E} ).
 
 
 -spec step( E :: e() ) -> {ok, e()} | norule.
@@ -415,4 +436,13 @@ step( E ) ->
     try_step( E )
   catch
     throw : E1 -> {ok, E1}
+  end.
+
+
+-spec eval( E :: e() ) -> e().
+
+eval( E ) ->
+  case step( E ) of
+    norule   -> E;
+    {ok, E1} -> eval( E1 )
   end.

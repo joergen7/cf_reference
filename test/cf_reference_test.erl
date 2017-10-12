@@ -7,7 +7,7 @@
                         false/0, cnd/3] ).
 -import( cf_reference, [t_arg/2, t_str/0, t_file/0, t_bool/0, t_fn/3] ).
 -import( cf_reference, [l_bash/0] ).
--import( cf_reference, [is_value/1, type/2, step/1] ).
+-import( cf_reference, [is_value/1, type/2, step/1, eval/1] ).
 -import( cf_reference, [gensym/1, rename/3, subst/3] ).
 
 
@@ -577,8 +577,6 @@ subst_traverses_condition_else_expr() ->
                 subst( cnd( true(), true(), x ), x, y ) ).
 
 
-
-
 step_test_() ->
   {foreach,
 
@@ -586,14 +584,19 @@ step_test_() ->
    fun( _ ) -> ok end,
 
    [
-    {"str is left alone",  fun str_is_left_alone/0},
-    {"file is left alone", fun file_is_left_alone/0},
+    {"str is left alone",               fun str_is_left_alone/0},
+    {"file is left alone",              fun file_is_left_alone/0},
+    {"future is left alone",            fun future_is_left_alone/0},
+    {"true is left alone",              fun true_is_left_alone/0},
+    {"false is left alone",             fun false_is_left_alone/0},
 
     {"native function body is left alone",
      fun native_function_body_is_left_alone/0},
 
     {"constant function evaluates value",
-     fun constant_function_evaluates_value/0}
+     fun constant_function_evaluates_value/0},
+
+    {"identity function inserts arg", fun identity_function_inserts_arg/0}
    ]
   }.
 
@@ -603,9 +606,68 @@ str_is_left_alone() ->
 file_is_left_alone() ->
   ?assertEqual( norule, step( file( "blub" ) ) ).
 
+future_is_left_alone() ->
+  ?assertEqual( norule, step( fut( ?E_APP_GREET ) ) ).
+
+true_is_left_alone() ->
+  ?assertEqual( norule, step( true() ) ).
+
+false_is_left_alone() ->
+  ?assertEqual( norule, step( false() ) ).
+
 native_function_body_is_left_alone() ->
   ?assertEqual( norule, step( lambda_ntv( [], ?E_IF ) ) ).
 
 constant_function_evaluates_value() ->
   ?assertEqual( {ok, str( "blub" )}, step( app( ?E_LAMBDA_CONST, [] ) ) ).
 
+identity_function_inserts_arg() ->
+  ?assertEqual( {ok, app( lambda_ntv( [], str( "blub" ) ), [] )},
+                step( ?E_APP_ID ) ).
+
+
+eval_test_() ->
+  {foreach,
+
+   fun() -> ok end,
+   fun( _ ) -> ok end,
+
+   [
+    {"identity function evaluates arg", fun identity_function_evaluates_arg/0},
+    {"apply function ignoring arg", fun apply_function_ignoring_arg/0},
+
+    {"evaluation continues in application function expr",
+     fun evaluation_continues_in_application_function_expr/0},
+
+    {"application arg is substituted as is",
+     fun application_arg_is_substituted_as_is/0}
+   ]
+  }.
+
+identity_function_evaluates_arg() ->
+  ?assertEqual( str( "blub" ), eval( ?E_APP_ID ) ).
+
+apply_function_ignoring_arg() ->
+
+  E1 = app( lambda_ntv( [arg_ntv( x, "x", t_str() )],
+                        app( ?E_LAMBDA_CONST, [] ) ),
+            [bind( "x", str( "bla" ) )] ),
+  ?assertEqual( str( "blub" ), eval( E1 ) ),
+
+  E2 = app( lambda_ntv( [arg_ntv( x, "x", t_str() )],
+                        str( "blub" ) ),
+            [bind( "x", str( "bla" ) )] ),
+  ?assertEqual( str( "blub" ), eval( E2 ) ),
+
+  E3 = app( lambda_ntv( [arg_ntv( x, "x", t_str() )],
+                        file( "blub" ) ),
+            [bind( "x", str( "bla" ) )] ),
+  ?assertEqual( file( "blub" ), eval( E3 ) ).
+
+evaluation_continues_in_application_function_expr() ->
+  E = app( app( ?E_LAMBDA_ID, [bind( "x", ?E_LAMBDA_CONST )]), [] ),
+  ?assertEqual( str( "blub" ), eval( E ) ).
+
+application_arg_is_substituted_as_is() ->
+  E = app( ?E_LAMBDA_ID, [bind( "x", fut( ?E_APP_GREET ) )] ),
+  ?assertEqual( fut( ?E_APP_GREET ), eval( E ) ).
