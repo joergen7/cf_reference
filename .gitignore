@@ -18,3 +18,4 @@ _build
 rebar.lock
 .eqc
 rebar3.crashdump
+.eqc-info

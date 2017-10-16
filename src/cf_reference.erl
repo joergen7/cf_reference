@@ -27,11 +27,16 @@
 -export( [is_value/1, type/1, type/2, step/1, evaluate/1] ).
 -export( [gensym/1, rename/3, subst/3] ).
 
--ifdef( EQC ).
--export( [prop_progress/0] ).
+%%
+-export( [gen_e/0] ).
+%%
+
+% -ifdef( EQC ).
+-export( [prop_progress/0, prop_preservation/0] ).
 -include_lib( "eqc/include/eqc.hrl" ).
--define( MAX_DEPTH, 4 ).
--endif.
+-define( MAX_DEPTH_E, 4 ).
+-define( MAX_DEPTH_T, 2 ).
+% -endif.
 
 
 -include( "cf_reference.hrl" ).
@@ -286,7 +291,8 @@ type( Gamma, {EFn, BindLst} ) when is_list( BindLst ) ->        % T-app
             true  -> {ok, RetType};
             false -> error
           end
-      end
+      end;
+    {ok, _} -> error % TODO: Add unit test for this case ALSO IN CF-REDEX
   end;
 
 type( _, {fut, {{lambda, frn, _, _, RetType, _, _}, _}} ) ->    % T-fut
@@ -457,40 +463,96 @@ evaluate( E ) ->
 
 
 
+% -ifdef( EQC ).
 
--ifdef( EQC ).
 
 %%====================================================================
 %% EQC generators
 %%====================================================================
 
+gen_t_str() -> ?LAZY( t_str() ).
+gen_t_file() -> ?LAZY( t_file() ).
+gen_t_bool() -> ?LAZY( t_bool() ).
+
+gen_t_arg( N ) ->
+  ?LET( ExName, elements( ["a", "b", "c", "d"] ),
+    t_arg( ExName, gen_t( N ) ) ).
+
+gen_t_fn( N ) ->
+  ?LAZY(
+    ?LET( ArgLst, list( gen_t_arg( N-1 ) ),
+      ?LET( RetType, gen_t( N-1 ),
+        ?LET( Tau, elements( [ntv, frn] ),
+          t_fn( Tau, ArgLst, RetType ) ) ) ) ).
+
+gen_t() ->
+  gen_t( ?MAX_DEPTH_T ).
+
+gen_t( 0 ) ->
+  oneof( [gen_t_str(), gen_t_file(), gen_t_bool()] );
+
+gen_t( N ) when N > 0 ->
+  oneof( [gen_t_str(), gen_t_file(), gen_t_bool(), gen_t_fn( N )] ).
+
 gen_str() ->
-  ?LAZY( {str, elements( ["a", "b", "c", "d"] )} ).
+  ?LAZY(
+    ?LET( S, elements( ["a", "b", "c", "d"] ),
+      str( S ) ) ).
 
 gen_file() ->
-  ?LAZY( {file, elements( ["a", "b", "c", "d"] )} ).
+  ?LAZY(
+    ?LET( S, elements( ["a", "b", "c", "d"] ),
+      file( S ) ) ).
 
 gen_bool() ->
   ?LAZY( oneof( [true, false] ) ).
 
+
+gen_arg_ntv() ->
+  ?LET( S, elements( ["a", "b", "c", "d"] ),
+    {list_to_atom( S ), S, gen_t()} ).
+
+gen_lambda_ntv( N ) ->
+  ?LAZY( {lambda, ntv, list( gen_arg_ntv() ), gen_e( N-1 )} ).
+
+gen_var() ->
+  ?LAZY( elements( [a, b, c, d] ) ).
+
+gen_bind( N ) ->
+  ?LET( S, elements( ["a", "b", "c", "d"] ),
+    ?LET( E, gen_e( N ),
+      bind( S, E ) ) ).
+
+gen_app( N ) ->
+  ?LAZY(
+    ?LET( Left, gen_e( N-1 ),
+      ?LET( BindLst, list( gen_bind( N-1 ) ),
+        app( Left, BindLst ) ) ) ).
+
 gen_e() ->
-  gen_e( ?MAX_DEPTH ).
+  gen_e( ?MAX_DEPTH_E ).
 
 gen_e( N ) when N > 0 ->
-  oneof( [gen_str(), gen_file(), gen_bool()] );
+  oneof( [gen_str(), gen_file(), gen_bool(), gen_var(),
+          gen_lambda_ntv( N ), gen_app( N )] );
 
 gen_e( 0 ) ->
-  oneof( [gen_str(), gen_file(), gen_bool()] ).
+  oneof( [gen_str(), gen_file(), gen_bool(), gen_var()] ).
 
 %%====================================================================
-%% EQC properties
+%% EQC helper functions
 %%====================================================================
+
 
 is_typable( E ) ->
   case type( E ) of
     {ok, _} -> true;
     error   -> false
   end.
+
+%%====================================================================
+%% EQC properties
+%%====================================================================
 
 %% Progress
 
@@ -507,4 +569,4 @@ prop_preservation() ->
       ?LET( {ok, E1}, step( E ),
         type( E ) =:= type( E1 ) ) ) ).
 
--endif.
+% -endif.
