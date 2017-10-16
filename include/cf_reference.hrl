@@ -26,7 +26,9 @@
 
 -type t() :: 'Str'
            | 'File'
-           | 'Bool'.
+           | 'Bool'
+           | {'Fn', ntv, [{string(), t()}], t()}
+           | {'Fn', frn, [{string(), u()}], u()}.
 
 -type u() :: 'Str'
            | 'File'

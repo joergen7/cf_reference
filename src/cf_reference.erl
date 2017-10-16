@@ -27,16 +27,13 @@
 -export( [is_value/1, type/1, type/2, step/1, evaluate/1] ).
 -export( [gensym/1, rename/3, subst/3] ).
 
-%%
--export( [gen_e/0] ).
-%%
 
-% -ifdef( EQC ).
+-ifdef( EQC ).
 -export( [prop_progress/0, prop_preservation/0] ).
 -include_lib( "eqc/include/eqc.hrl" ).
 -define( MAX_DEPTH_E, 4 ).
 -define( MAX_DEPTH_T, 2 ).
-% -endif.
+-endif.
 
 
 -include( "cf_reference.hrl" ).
@@ -90,10 +87,10 @@ lambda_ntv( ArgLst, Body ) when is_list( ArgLst ) ->
 
 
 -spec lambda_frn( LamName, ArgLst, RetType, Lang, BodyStr ) ->
-  {lambda, frn, string(), [{atom(), string(), u()}], t(), l(), string()}
+  {lambda, frn, string(), [{string(), u()}], u(), l(), string()}
 when LamName :: string(),
-     ArgLst  :: [{atom(), string(), u()}],
-     RetType :: t(),
+     ArgLst  :: [{string(), u()}],
+     RetType :: u(),
      Lang    :: l(),
      BodyStr :: string().
 
@@ -466,27 +463,44 @@ evaluate( E ) ->
 
 
 
-% -ifdef( EQC ).
+-ifdef( EQC ).
 
 
 %%====================================================================
 %% EQC generators
 %%====================================================================
 
+%% gen_t
+
+gen_sign( _Tau, 0, _N, _NameLst ) ->
+  [];
+
+gen_sign( ntv, A, N, NameLst ) when A > 0 ->
+  ?LET( T, gen_t( N ),
+  ?LET( Name, elements( NameLst ),
+    [{Name, T}|gen_sign( ntv, A-1, N, NameLst--[Name] )] ) );
+
+gen_sign( frn, A, N, NameLst ) when A > 0 ->
+  ?LET( U, gen_u(),
+  ?LET( Name, elements( NameLst ),
+    [{Name, U}|gen_sign( frn, A-1, N, NameLst--[Name] )] ) ).
+
 gen_t_str() -> ?LAZY( t_str() ).
 gen_t_file() -> ?LAZY( t_file() ).
 gen_t_bool() -> ?LAZY( t_bool() ).
 
-gen_t_arg( N ) ->
-  ?LET( ExName, elements( ["a", "b", "c", "d"] ),
-    t_arg( ExName, gen_t( N ) ) ).
-
-gen_t_fn( N ) ->
+gen_t_fn( ntv, A, N ) ->
   ?LAZY(
-    ?LET( ArgLst, list( gen_t_arg( N-1 ) ),
-      ?LET( RetType, gen_t( N-1 ),
-        ?LET( Tau, elements( [ntv, frn] ),
-          t_fn( Tau, ArgLst, RetType ) ) ) ) ).
+    ?LET( Sign, gen_sign( ntv, A, N-1, ["a", "b", "c", "d"] ),
+    ?LET( RetType, gen_t( N-1 ),
+      t_fn( ntv, Sign, RetType ) ) ) );
+
+gen_t_fn( frn, A, N ) ->
+  ?LAZY(
+    ?LET( Sign, gen_sign( frn, A, N-1, ["a", "b", "c", "d"] ),
+    ?LET( RetType, gen_u(),
+      t_fn( ntv, Sign, RetType ) ) ) ).
+
 
 gen_t() ->
   gen_t( ?MAX_DEPTH_T ).
@@ -495,63 +509,103 @@ gen_t( 0 ) ->
   oneof( [gen_t_str(), gen_t_file(), gen_t_bool()] );
 
 gen_t( N ) when N > 0 ->
-  oneof( [gen_t_str(), gen_t_file(), gen_t_bool(), gen_t_fn( N )] ).
+  ?LET( A, choose( 0, 4 ),
+  ?LET( Tau, elements( [ntv, frn] ),
+    oneof( [gen_t_str(), gen_t_file(), gen_t_bool(),
+            gen_t_fn( Tau, A, N )] ) ) ).
 
-gen_str() ->
+gen_u() ->
+  oneof( [gen_t_str(), gen_t_file(), gen_t_bool()] ).
+
+
+%% gen_e
+
+gen_typable_value( _N, _Gamma, 'Str' ) ->
   ?LAZY(
     ?LET( S, elements( ["a", "b", "c", "d"] ),
-      str( S ) ) ).
+      str( S ) ) );
 
-gen_file() ->
+gen_typable_value( _N, _Gamma, 'File' ) ->
   ?LAZY(
     ?LET( S, elements( ["a", "b", "c", "d"] ),
-      file( S ) ) ).
+      file( S ) ) );
 
-gen_bool() ->
-  ?LAZY( oneof( [true, false] ) ).
+gen_typable_value( _N, _Gamma, 'Bool' ) ->
+  ?LAZY( elements( [true, false] ) );
 
-
-gen_arg_ntv() ->
-  ?LET( S, elements( ["a", "b", "c", "d"] ),
-    {list_to_atom( S ), S, gen_t()} ).
-
-gen_lambda_ntv( N ) ->
-  ?LAZY( {lambda, ntv, list( gen_arg_ntv() ), gen_e( N-1 )} ).
-
-gen_var() ->
-  ?LAZY( elements( [a, b, c, d] ) ).
-
-gen_bind( N ) ->
-  ?LET( S, elements( ["a", "b", "c", "d"] ),
-    ?LET( E, gen_e( N ),
-      bind( S, E ) ) ).
-
-gen_app( N ) ->
+gen_typable_value( N, Gamma, {'Fn', ntv, ArgLst, RetType} ) ->
   ?LAZY(
-    ?LET( Left, gen_e( N-1 ),
-      ?LET( BindLst, list( gen_bind( N-1 ) ),
-        app( Left, BindLst ) ) ) ).
-
-gen_e() ->
-  gen_e( ?MAX_DEPTH_E ).
-
-gen_e( N ) when N > 0 ->
-  oneof( [gen_str(), gen_file(), gen_bool(), gen_var(),
-          gen_lambda_ntv( N ), gen_app( N )] );
-
-gen_e( 0 ) ->
-  oneof( [gen_str(), gen_file(), gen_bool(), gen_var()] ).
-
-%%====================================================================
-%% EQC helper functions
-%%====================================================================
+    ?LET( Body,
+          gen_typable_expr(
+            N,
+            maps:merge( Gamma,
+                        maps:from_list(
+                          [{list_to_atom( S ), T} || {S, T} <- ArgLst] ) ),
+            RetType ),
+    lambda_ntv( [{list_to_atom( S ), S, T} || {S, T} <- ArgLst], Body ) ) );
 
 
-is_typable( E ) ->
-  case type( E ) of
-    {ok, _} -> true;
-    error   -> false
+gen_typable_value( _N, _Gamma, {'Fn', frn, ArgLst, RetType} ) ->
+  ?LAZY(
+    ?LET( Name, elements( ["f1", "f2", "f3", "f4"] ),
+    ?LET( Lang, elements( [l_bash(),
+                           l_octave(),
+                           l_perl(),
+                           l_python(),
+                           l_r()] ),
+      lambda_frn( Name, ArgLst, RetType, Lang, "..." ) ) ) ).
+
+gen_typable_app( N, Gamma, RetType ) ->
+  ?LAZY(
+    ?LET( Tau, if is_atom( RetType ) -> elements( [ntv, frn] ); true -> ntv end,
+    ?LET( A, choose( 0, 4 ),
+    ?LET( Sign, gen_sign( ntv, A, ?MAX_DEPTH_T, ["a", "b", "c", "d"] ),
+    ?LET( F, gen_typable_expr( N-1, Gamma, t_fn( Tau, Sign, RetType ) ),
+    ?LET( BindLst, [{S, gen_typable_expr( N-1, Gamma, T )} || {S, T} <- Sign],
+      app( F, BindLst ) ) ) ) ) ) ).
+
+gen_typable_expr() ->
+  ?LET( T, gen_t(),
+    gen_typable_expr( ?MAX_DEPTH_E, #{}, T ) ).
+
+
+gen_typable_expr( 0, Gamma, T ) ->
+  case var_lst( Gamma, T ) of
+    [] ->
+      gen_typable_value( 0, Gamma, T );
+    VarLst ->
+      oneof( [elements( VarLst ),
+              gen_typable_value( 0, Gamma, T )] )
+  end;
+
+
+gen_typable_expr( N, Gamma, T ) when N > 0 ->
+  case var_lst( Gamma, T ) of
+    [] ->
+      oneof( [gen_typable_value( N, Gamma, T ),
+              gen_typable_app( N, Gamma, T )] );
+    VarLst ->
+      oneof( [elements( VarLst ),
+              gen_typable_value( N, Gamma, T ),
+              gen_typable_app( N, Gamma, T )] )
   end.
+
+
+gen_nonvalue_typable_expr() ->
+  ?LET( T, gen_t(),
+    gen_typable_app( ?MAX_DEPTH_E, #{}, T ) ).
+
+
+var_lst( Gamma, T ) ->
+
+  F = fun
+        ( _, CurT ) when CurT =:= T -> true;
+        ( _, _ )                    -> false
+      end,
+
+  maps:keys( maps:filter( F, Gamma ) ).
+
+
 
 %%====================================================================
 %% EQC properties
@@ -560,16 +614,14 @@ is_typable( E ) ->
 %% Progress
 
 prop_progress() ->
-  ?FORALL( E, gen_e(),
-    ?IMPLIES( not is_value( E ) andalso is_typable( E ),
-      step( E ) =/= norule ) ).
+  ?FORALL( E, gen_nonvalue_typable_expr(),
+    step( E ) =/= norule ).
 
 %% Preservation
 
 prop_preservation() ->
-  ?FORALL( E, gen_e(),
-    ?IMPLIES( not is_value( E ) andalso is_typable( E ),
-      ?LET( {ok, E1}, step( E ),
-        type( E ) =:= type( E1 ) ) ) ).
+  ?FORALL( E, gen_nonvalue_typable_expr(),
+    ?LET( {ok, E1}, step( E ),
+      type( E ) =:= type( E1 ) ) ).
 
-% -endif.
+-endif.

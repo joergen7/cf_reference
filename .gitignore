@@ -19,3 +19,4 @@ rebar.lock
 .eqc
 rebar3.crashdump
 .eqc-info
+current_counterexample.eqc
