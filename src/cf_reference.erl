@@ -292,7 +292,7 @@ type( Gamma, {EFn, BindLst} ) when is_list( BindLst ) ->        % T-app
             false -> error
           end
       end;
-    {ok, _} -> error % TODO: Add unit test for this case ALSO IN CF-REDEX
+    {ok, _} -> error
   end;
 
 type( _, {fut, {{lambda, frn, _, _, RetType, _, _}, _}} ) ->    % T-fut
@@ -432,7 +432,7 @@ try_step( {{lambda, ntv, [{X, _S, _T}|ArgLst], Body},           % E-beta
 try_step(  App = {{lambda, frn, _, _, _, _, _}, _BindLst} ) ->  % E-sigma
   throw( fut( App ) );
 
-  
+
 %% congruence rules
 
 try_step( {F, BindLst} ) ->

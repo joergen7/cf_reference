@@ -108,6 +108,9 @@ type_test_() ->
     {"application with untypable function expression untypable",
      fun application_with_untypable_function_expression_untypable/0},
 
+    {"application whose function expression is not a function untypable",
+     fun application_whose_function_expression_is_not_a_function_untypable/0},
+
     {"application whose function expression accesses closure typable",
      fun application_whose_function_expression_accesses_closure_typable/0},
 
@@ -214,6 +217,9 @@ application_typable() ->
 
 application_with_untypable_function_expression_untypable() ->
   ?assertEqual( error, type( #{}, app( f, [bind( "x", str( "blub" ) )] ) ) ).
+
+application_whose_function_expression_is_not_a_function_untypable() ->
+  ?assertEqual( error, type( #{}, app( str( "blub" ), [] ) ) ).
 
 application_whose_function_expression_accesses_closure_typable() ->
   Gamma = #{ f => t_fn( ntv, [t_arg( "x", t_str() )], t_file() )},
