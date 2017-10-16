@@ -24,12 +24,15 @@
           lambda_frn/5, app/2, fut/1, true/0, false/0, cnd/3] ).
 -export( [t_arg/2, t_str/0, t_file/0, t_bool/0, t_fn/3] ).
 -export( [l_bash/0, l_octave/0, l_perl/0, l_python/0, l_r/0] ).
--export( [is_value/1, type/2, step/1, eval/1] ).
+-export( [is_value/1, type/1, type/2, step/1, evaluate/1] ).
 -export( [gensym/1, rename/3, subst/3] ).
 
--ifdef( TEST ).
--include_lib( "eunit/include/eunit.hrl" ).
+-ifdef( EQC ).
+-export( [prop_progress/0] ).
+-include_lib( "eqc/include/eqc.hrl" ).
+-define( MAX_DEPTH, 4 ).
 -endif.
+
 
 -include( "cf_reference.hrl" ).
 
@@ -216,6 +219,11 @@ is_value( E ) -> error( {malformed_expr, E} ).
 %%====================================================================
 %% Type Checker
 %%====================================================================
+
+-spec type( E :: e() ) -> {ok, t()} | error.
+
+type( E ) ->
+  type( #{}, E ).
 
 -spec type( Gamma :: #{ atom() => t() }, E :: e() ) -> {ok, t()} | error.
 
@@ -439,10 +447,64 @@ step( E ) ->
   end.
 
 
--spec eval( E :: e() ) -> e().
+-spec evaluate( E :: e() ) -> e().
 
-eval( E ) ->
+evaluate( E ) ->
   case step( E ) of
     norule   -> E;
-    {ok, E1} -> eval( E1 )
+    {ok, E1} -> evaluate( E1 )
   end.
+
+
+
+
+-ifdef( EQC ).
+
+%%====================================================================
+%% EQC generators
+%%====================================================================
+
+gen_str() ->
+  ?LAZY( {str, elements( ["a", "b", "c", "d"] )} ).
+
+gen_file() ->
+  ?LAZY( {file, elements( ["a", "b", "c", "d"] )} ).
+
+gen_bool() ->
+  ?LAZY( oneof( [true, false] ) ).
+
+gen_e() ->
+  gen_e( ?MAX_DEPTH ).
+
+gen_e( N ) when N > 0 ->
+  oneof( [gen_str(), gen_file(), gen_bool()] );
+
+gen_e( 0 ) ->
+  oneof( [gen_str(), gen_file(), gen_bool()] ).
+
+%%====================================================================
+%% EQC properties
+%%====================================================================
+
+is_typable( E ) ->
+  case type( E ) of
+    {ok, _} -> true;
+    error   -> false
+  end.
+
+%% Progress
+
+prop_progress() ->
+  ?FORALL( E, gen_e(),
+    ?IMPLIES( not is_value( E ) andalso is_typable( E ),
+      step( E ) =/= norule ) ).
+
+%% Preservation
+
+prop_preservation() ->
+  ?FORALL( E, gen_e(),
+    ?IMPLIES( not is_value( E ) andalso is_typable( E ),
+      ?LET( {ok, E1}, step( E ),
+        type( E ) =:= type( E1 ) ) ) ).
+
+-endif.

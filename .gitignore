@@ -16,3 +16,5 @@ _build
 .idea
 
 rebar.lock
+.eqc
+rebar3.crashdump

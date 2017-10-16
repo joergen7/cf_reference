@@ -7,7 +7,7 @@
                         false/0, cnd/3] ).
 -import( cf_reference, [t_arg/2, t_str/0, t_file/0, t_bool/0, t_fn/3] ).
 -import( cf_reference, [l_bash/0] ).
--import( cf_reference, [is_value/1, type/2, step/1, eval/1] ).
+-import( cf_reference, [is_value/1, type/2, step/1, evaluate/1] ).
 -import( cf_reference, [gensym/1, rename/3, subst/3] ).
 
 
@@ -645,29 +645,29 @@ eval_test_() ->
   }.
 
 identity_function_evaluates_arg() ->
-  ?assertEqual( str( "blub" ), eval( ?E_APP_ID ) ).
+  ?assertEqual( str( "blub" ), evaluate( ?E_APP_ID ) ).
 
 apply_function_ignoring_arg() ->
 
   E1 = app( lambda_ntv( [arg_ntv( x, "x", t_str() )],
                         app( ?E_LAMBDA_CONST, [] ) ),
             [bind( "x", str( "bla" ) )] ),
-  ?assertEqual( str( "blub" ), eval( E1 ) ),
+  ?assertEqual( str( "blub" ), evaluate( E1 ) ),
 
   E2 = app( lambda_ntv( [arg_ntv( x, "x", t_str() )],
                         str( "blub" ) ),
             [bind( "x", str( "bla" ) )] ),
-  ?assertEqual( str( "blub" ), eval( E2 ) ),
+  ?assertEqual( str( "blub" ), evaluate( E2 ) ),
 
   E3 = app( lambda_ntv( [arg_ntv( x, "x", t_str() )],
                         file( "blub" ) ),
             [bind( "x", str( "bla" ) )] ),
-  ?assertEqual( file( "blub" ), eval( E3 ) ).
+  ?assertEqual( file( "blub" ), evaluate( E3 ) ).
 
 evaluation_continues_in_application_function_expr() ->
   E = app( app( ?E_LAMBDA_ID, [bind( "x", ?E_LAMBDA_CONST )]), [] ),
-  ?assertEqual( str( "blub" ), eval( E ) ).
+  ?assertEqual( str( "blub" ), evaluate( E ) ).
 
 application_arg_is_substituted_as_is() ->
   E = app( ?E_LAMBDA_ID, [bind( "x", fut( ?E_APP_GREET ) )] ),
-  ?assertEqual( fut( ?E_APP_GREET ), eval( E ) ).
+  ?assertEqual( fut( ?E_APP_GREET ), evaluate( E ) ).
