@@ -385,7 +385,7 @@ subst( Lambda = {lambda, ntv, ArgLst, Body}, X, N ) ->
     true  -> Lambda;
     false ->
       
-      Lambda1 = lists:foldl( F, {lambda, ntv, [], Body}, ArgLst ),
+      Lambda1 = lists:foldr( F, {lambda, ntv, [], Body}, ArgLst ),
       {lambda, ntv, ArgLst1, Body1} = Lambda1,
 
       {lambda, ntv, ArgLst1, subst( Body1, X, N )}
@@ -418,7 +418,7 @@ try_step( {lambda, ntv, _ArgLst, _Body} ) -> norule;
 try_step( {fut, _E} )                     -> norule;
 try_step( true )                          -> norule;
 try_step( false )                         -> norule;
-
+try_step( {lambda, frn, _, _, _, _, _} )  -> norule;
 
 %% notion of reduction
 
@@ -429,7 +429,10 @@ try_step( {{lambda, ntv, [{X, _S, _T}|ArgLst], Body},           % E-beta
            [{_S, E}|BindLst]} ) ->
   throw( {{lambda, ntv, ArgLst, subst( Body, X, E )}, BindLst} );
 
+try_step(  App = {{lambda, frn, _, _, _, _, _}, _BindLst} ) ->  % E-sigma
+  throw( fut( App ) );
 
+  
 %% congruence rules
 
 try_step( {F, BindLst} ) ->

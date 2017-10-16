@@ -69,6 +69,7 @@ abstraction_is_value() ->
 
 application_is_no_value() ->
   ?assertNot( is_value( ?E_APP_ID ) ),
+  ?assertNot( is_value( app( ?E_LAMBDA_CONST, [] ) ) ),
   ?assertNot( is_value( ?E_APP_GREET ) ).
 
 future_is_no_value() ->
@@ -208,6 +209,7 @@ native_function_accessing_its_closure_typable() ->
 
 application_typable() ->
   ?assertEqual( {ok, t_str()}, type( #{}, ?E_APP_ID ) ),
+  ?assertEqual( {ok, t_str()}, type( #{}, app( ?E_LAMBDA_CONST, [] ) ) ),
   ?assertEqual( {ok, t_str()}, type( #{}, ?E_APP_GREET ) ).
 
 application_with_untypable_function_expression_untypable() ->
@@ -545,7 +547,11 @@ subst_continues_in_arg_expr_of_app() ->
 subst_continues_in_native_function_body() ->
   ?assertMatch( {lambda, ntv, [], y}, subst( lambda_ntv( [], x ), x, y ) ),
   ?assertMatch( {lambda, ntv, [{_, "a", 'Str'}], y},
-                subst( lambda_ntv( [{a, "a", t_str()}], x ), x, y ) ).
+                subst( lambda_ntv( [arg_ntv( a, "a", t_str() )], x ), x, y ) ),
+  ?assertMatch( {lambda, ntv, [{_, "a", 'Str'}, {_, "b", 'File'}], y},
+                subst( lambda_ntv( [arg_ntv( a, "a", t_str() ),
+                                    arg_ntv( b, "b", t_file() )], x ), x, y ) ).
+
 
 subst_native_function_arg_shadowed() ->
   ?assertEqual( ?E_LAMBDA_ID, subst( ?E_LAMBDA_ID, x, y ) ).
@@ -589,6 +595,7 @@ step_test_() ->
     {"future is left alone",            fun future_is_left_alone/0},
     {"true is left alone",              fun true_is_left_alone/0},
     {"false is left alone",             fun false_is_left_alone/0},
+    {"foreign function is left alone",  fun foreign_function_is_left_alone/0},
 
     {"native function body is left alone",
      fun native_function_body_is_left_alone/0},
@@ -615,6 +622,9 @@ true_is_left_alone() ->
 false_is_left_alone() ->
   ?assertEqual( norule, step( false() ) ).
 
+foreign_function_is_left_alone() ->
+  ?assertEqual( norule, step( ?E_LAMBDA_GREET ) ).
+
 native_function_body_is_left_alone() ->
   ?assertEqual( norule, step( lambda_ntv( [], ?E_IF ) ) ).
 
@@ -640,7 +650,11 @@ eval_test_() ->
      fun evaluation_continues_in_application_function_expr/0},
 
     {"application arg is substituted as is",
-     fun application_arg_is_substituted_as_is/0}
+     fun application_arg_is_substituted_as_is/0},
+
+    {"foreign_application_with_value_arg_becomes_future",
+     fun foreign_application_with_value_arg_becomes_future/0}
+
    ]
   }.
 
@@ -671,3 +685,6 @@ evaluation_continues_in_application_function_expr() ->
 application_arg_is_substituted_as_is() ->
   E = app( ?E_LAMBDA_ID, [bind( "x", fut( ?E_APP_GREET ) )] ),
   ?assertEqual( fut( ?E_APP_GREET ), evaluate( E ) ).
+
+ foreign_application_with_value_arg_becomes_future() ->
+  ?assertEqual( fut( ?E_APP_GREET ), evaluate( ?E_APP_GREET ) ).
