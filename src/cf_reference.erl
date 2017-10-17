@@ -564,11 +564,6 @@ gen_typable_app( N, Gamma, RetType ) ->
     ?LET( BindLst, [{S, gen_typable_expr( N-1, Gamma, T )} || {S, T} <- Sign],
       app( F, BindLst ) ) ) ) ) ) ).
 
-gen_typable_expr() ->
-  ?LET( T, gen_t(),
-    gen_typable_expr( ?MAX_DEPTH_E, #{}, T ) ).
-
-
 gen_typable_expr( 0, Gamma, T ) ->
   case var_lst( Gamma, T ) of
     [] ->
