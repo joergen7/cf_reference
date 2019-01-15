@@ -1,15 +1,40 @@
 # cf_reference
-###### A reference implementation of the Cuneiform semantics.
-[![Build Status](https://travis-ci.org/joergen7/cf_reference.svg?branch=master)](https://travis-ci.org/joergen7/cf_reference)
 
-## Running All Diagnostics
+###### semantic reference of the Cuneiform distributed programming language
 
-The following diagnostics can be applied to this code base: The dialyzer applies a discrepancy analysis to the code base. Hereby, the function specifications are checked for consistency with the function implementations using success typing. The unit test suite that comes with this code base reflects the plausibility of typing, evaluation, substitution, and renaming. Finally, the Erlang Quick Check test generators and properties allow the assurance of Cuneiform's type safety using random testing.
+This is a specification of the Cuneiform distributed programming language created in [Redex](https://redex.racket-lang.org/).
 
-    rebar3 do dialyzer, eunit, eqc
+This semantic reference defines an abstract syntax as a Redex language, a type system as judgment forms, a reduction relation as a notion of reduction and an evaluation context, and several examples for which we plot evaluation traces. The semantic reference comes with a unit test suite suitable to test new Cuneiform implementations.
+
+Note that this reference defines only the semantics of the interpreter up to the interpreter's side of a communication protocol with a distributed execution environment.
+
+
+## Running the Test Suite
+
+On the command line enter the following command while in the `cf_reference` directory:
+
+    raco test -j 8 *.rkt
+
+## Change Notes
+
+The previous [0.1.0 release](https://github.com/joergen7/cf_reference/releases/tag/0.1.0) of this semantic reference includes property-based random tests based on [Erlang QuickCheck](http://www.quviq.com/products/erlang-quickcheck/). The current branch of the semantic reference provides only a unit test suite. We might add a property-based test scheme again later.
 
 ## System Requirements
 
-- [Erlang](http://www.erlang.org) OTP 18.0 or higher
-- [Rebar3](https://www.rebar3.org) 3.0.0 or higher
-- [Erlang Quick Check (Mini)](http://www.quviq.com/index.html) 2.01.0 or higher
+- [Racket](http://www.racket-lang.org)
+
+## Resources
+
+- [joergen7/cuneiform](https://github.com/joergen7/cuneiform) Erlang-based Cuneiform implementation
+- [Cuneiform semantics paper](https://www.cambridge.org/core/journals/journal-of-functional-programming/article/computation-semantics-of-the-functional-scientific-workflow-language-cuneiform/1A3B8AB825939117C5BD9F850F63ADCC) published in the Journal of Functional Programming
+- [Concrete syntax reference](https://www.cuneiform-lang.org/doc/syntax.html) in extended Backus-Naur form with railroad diagrams
+- [Cuneiform website](https://cuneiform-lang.org)
+
+
+## Authors
+
+- Jörgen Brandt ([@joergen7](https://github.com/joergen7/)) [joergen.brandt@onlinehome.de](mailto:joergen.brandt@onlinehome.de)
+
+## License
+
+[Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0.html)
