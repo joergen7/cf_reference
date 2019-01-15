@@ -1,6 +1,4 @@
-# cf_reference
-
-###### semantic reference of the Cuneiform distributed programming language
+# Semantic Reference of the Cuneiform Distributed Programming Language
 
 This is a specification of the Cuneiform distributed programming language created in [Redex](https://redex.racket-lang.org/).
 
