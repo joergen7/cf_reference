@@ -1,6 +1,7 @@
 ;;-----------------------------------------------------------------------------
 ;;
-;; cf_reference
+;; Semantic reference of the Cuneiform distributed programming
+;; language
 ;;
 ;; Copyright 2016-2019 Jörgen Brandt <joergen.brandt@onlinehome.de>
 ;;
@@ -23,6 +24,6 @@
 (define deps '("base"))
 (define build-deps '("scribble-lib" "racket-doc" "rackunit-lib"))
 (define scribblings '(("scribblings/cf_reference.scrbl" ())))
-(define pkg-desc "semantic reference of the Cuneiform distributed programming language")
+(define pkg-desc "Semantic reference of the Cuneiform distributed programming language")
 (define version "0.1.1")
 (define pkg-authors '(joergen7))

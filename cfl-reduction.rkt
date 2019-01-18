@@ -1,6 +1,7 @@
 ;;-----------------------------------------------------------------------------
 ;;
-;; cf_reference
+;; Semantic reference of the Cuneiform distributed programming
+;; language
 ;;
 ;; Copyright 2016-2019 Jörgen Brandt <joergen.brandt@onlinehome.de>
 ;;
