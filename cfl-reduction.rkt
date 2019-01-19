@@ -33,7 +33,7 @@
 
    (~> (app (λ () → T_ret (ntv e_body)) ())
       e_body
-      N-β-base)
+      E-β-base)
 
    (~> (app (λ ([x_1 : T_1] [x_i : T_i] ...) → T_ret (ntv e_body))
            ([x_2 = e_1] [x_j = e_j] ...))
@@ -41,7 +41,7 @@
       (app (λ ([x_i : T_i] ...) → T_ret (ntv (substitute e_body x_1 e_1)))
            ([x_j = e_j] ...))
 
-      N-β-ind)
+      E-β-ind)
 
    (~> (fix (λ ([x_f : T_f] [x_i : T_i] ...) → T_ret (ntv e_body)))
 
@@ -49,58 +49,58 @@
           (ntv (app (λ ([x_f : T_f]) (ntv e_body))
                     ([x_f = (fix (λ ([x_f : T_f] [x_i : T_i] ...) → T_ret (ntv e_body)))]))))
 
-        N-fix)
+       E-fix)
 
         
 
 
    (~> ((str s_1) == (str s_1))
       true
-      N-cmp-seq)
+      E-cmp-seq)
 
    (~> ((str s_1) == (str s_2))
       false
       (side-condition (not (equal? (term s_1) (term s_2))))
-      N-cmp-sneq)
+      E-cmp-sneq)
 
-   (~> (true == true)   true  N-cmp-tt)
-   (~> (true == false)  false N-cmp-tf)
-   (~> (false == true)  false N-cmp-ft)
-   (~> (false == false) true  N-cmp-ff)
+   (~> (true == true)   true  E-cmp-tt)
+   (~> (true == false)  false E-cmp-tf)
+   (~> (false == true)  false E-cmp-ft)
+   (~> (false == false) true  E-cmp-ff)
 
-   (~> (true ∧ true)    true  N-and-tt)
-   (~> (false ∧ e_2)    false N-and-f1)
-   (~> (e_1 ∧ false)    false N-and-f2)
+   (~> (true ∧ true)    true  E-and-tt)
+   (~> (false ∧ e_2)    false E-and-f1)
+   (~> (e_1 ∧ false)    false E-and-f2)
 
-   (~> (false ∨ false)  false N-or-ff)
-   (~> (true ∨ e_2)     true  N-or-t1)
-   (~> (e_1 ∨ true)     true  N-or-t2)
+   (~> (false ∨ false)  false E-or-ff)
+   (~> (true ∨ e_2)     true  E-or-t1)
+   (~> (e_1 ∨ true)     true  E-or-t2)
 
-   (~> (¬ true)         false N-not-t)
-   (~> (¬ false)        true  N-not-f)
+   (~> (¬ true)         false E-not-t)
+   (~> (¬ false)        true  E-not-f)
 
-   (~> (isnil (nil T))        true  N-isnil-nil)
-   (~> (isnil (cons e_1 e_2)) false N-isnil-cons)
+   (~> (isnil (nil T))        true  E-isnil-nil)
+   (~> (isnil (cons e_1 e_2)) false E-isnil-cons)
 
-   (~> (if true then e_1 else e_2)  e_1 N-if-t)
-   (~> (if false then e_1 else e_2) e_2 N-if-f)
+   (~> (if true then e_1 else e_2)  e_1 E-if-t)
+   (~> (if false then e_1 else e_2) e_2 E-if-f)
 
-   (~> ((nil T) + e_2)          e_2                      N-append-base)
-   (~> ((cons e_11 e_12) + e_2) (cons e_11 (e_12 + e_2)) N-append-ind)
+   (~> ((nil T) + e_2)          e_2                      E-append-base)
+   (~> ((cons e_11 e_12) + e_2) (cons e_11 (e_12 + e_2)) E-append-ind)
 
    (~> (for  T_body ([x_i : T_i ← e_i] ... [x_1 : T_1 ← (nil T_2)] [x_j : T_j ← e_j] ...) do
         e_body)
       e_body
-      N-for-base)
+      E-for-base)
 
    (~> (for T_body ([x_i : T_i ← (cons e_i1 e_i2)] ...) do e_body)
       (for T_body ([x_i : T_i ← e_i2] ...) do
         (app (λ ([x_i : T_i] ...) → T_body (ntv e_body)) ([x_i = e_i1] ...)))
-      N-for-ind)
+      E-for-ind)
 
    (~> (fold [x_acc : T_acc = e_acc] [x_1 : T_1 ← (nil T_2)] do e_body)
       e_acc
-      N-fold-base)
+      E-fold-base)
 
    (~> (fold [x_acc : T_acc = e_acc]
             [x_1 : T_1 ← (cons e_11 e_12)]
@@ -111,11 +111,11 @@
             [x_1 : T_1 ← e_12]
         do e_body)
 
-      N-fold-ind)
+      E-fold-ind)
 
    (~> (π x_1 (rcd ([x_i = e_i] ... [x_1 = e_1] [x_j = e_j] ...)))
       e_1
-      N-π)
+      E-π)
         
    (--> ((e_i ...)
          ([e_j v_j] ...)
