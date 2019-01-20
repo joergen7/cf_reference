@@ -51,22 +51,45 @@
 
        E-fix)
 
-        
-
-
    (~> ((str s_1) == (str s_1))
-      true
-      E-cmp-seq)
+       true
+       E-cmp-seq)
 
    (~> ((str s_1) == (str s_2))
-      false
-      (side-condition (not (equal? (term s_1) (term s_2))))
-      E-cmp-sneq)
+       false
+       (side-condition (not (equal? (term s_1) (term s_2))))
+       E-cmp-sneq)
 
    (~> (true == true)   true  E-cmp-tt)
    (~> (true == false)  false E-cmp-tf)
    (~> (false == true)  false E-cmp-ft)
    (~> (false == false) true  E-cmp-ff)
+
+   (~> ((nil T_1) == (nil T_2))
+       true
+       E-cmp-base)
+
+   (~> ((nil T_1) == (cons e_21 e_22))
+       false
+       E-cmp-nil1)
+
+   (~> ((cons e_11 e_12) == (nil T_2))
+       false
+       E-cmp-nil2)
+
+   (~> ((cons e_11 e_12) == (cons e_21 e_22))
+       ((e_11 == e_21) ∧ (e_12 == e_22))
+       E-cmp-ind)
+
+   (~> ((rcd ()) == (rcd ()))
+       true
+       E-rcd-base)
+
+   (~> (   (rcd ([x_1 = e_1] [x_i = e_i] ...))
+        == (rcd ([x_j = e_j] ... [x_1 = e_2] [x_k = e_k] ...)))
+       (   (e_1 == e_2) ∧ ((rcd ([x_i = e_i] ...))
+        == (rcd ([x_j = e_j] ... [x_k = e_k] ...))))
+       E-cmp-rcd-ind)
 
    (~> (true ∧ true)    true  E-and-tt)
    (~> (false ∧ e_2)    false E-and-f1)
@@ -79,43 +102,43 @@
    (~> (¬ true)         false E-not-t)
    (~> (¬ false)        true  E-not-f)
 
-   (~> (isnil (nil T))        true  E-isnil-nil)
+   (~> (isnil (nil T_1))      true  E-isnil-nil)
    (~> (isnil (cons e_1 e_2)) false E-isnil-cons)
 
    (~> (if true then e_1 else e_2)  e_1 E-if-t)
    (~> (if false then e_1 else e_2) e_2 E-if-f)
 
-   (~> ((nil T) + e_2)          e_2                      E-append-base)
+   (~> ((nil T_1) + e_2)        e_2                      E-append-base)
    (~> ((cons e_11 e_12) + e_2) (cons e_11 (e_12 + e_2)) E-append-ind)
 
-   (~> (for  T_body ([x_i : T_i ← e_i] ... [x_1 : T_1 ← (nil T_2)] [x_j : T_j ← e_j] ...) do
-        e_body)
-      e_body
-      E-for-base)
+   (~> (for T_body ([x_i : T_i ← e_i] ... [x_1 : T_1 ← (nil T_2)] [x_j : T_j ← e_j] ...) do
+         e_body)
+       (nil T_body)
+       E-for-base)
 
    (~> (for T_body ([x_i : T_i ← (cons e_i1 e_i2)] ...) do e_body)
-      (for T_body ([x_i : T_i ← e_i2] ...) do
-        (app (λ ([x_i : T_i] ...) → T_body (ntv e_body)) ([x_i = e_i1] ...)))
-      E-for-ind)
+       (for T_body ([x_i : T_i ← e_i2] ...) do
+         (app (λ ([x_i : T_i] ...) → T_body (ntv e_body)) ([x_i = e_i1] ...)))
+       E-for-ind)
 
    (~> (fold [x_acc : T_acc = e_acc] [x_1 : T_1 ← (nil T_2)] do e_body)
-      e_acc
-      E-fold-base)
+       e_acc
+       E-fold-base)
 
    (~> (fold [x_acc : T_acc = e_acc]
-            [x_1 : T_1 ← (cons e_11 e_12)]
-        do e_body)
+             [x_1 : T_1 ← (cons e_11 e_12)]
+             do e_body)
       
-      (fold [x_acc : T_acc = (app (λ ([x_acc : T_acc] [x_1 : T_1]) → T_acc (ntv e_body))
-                                  ([x_acc = e_acc] [x_1 = e_11]))]
-            [x_1 : T_1 ← e_12]
-        do e_body)
+       (fold [x_acc : T_acc = (app (λ ([x_acc : T_acc] [x_1 : T_1]) → T_acc (ntv e_body))
+                                   ([x_acc = e_acc] [x_1 = e_11]))]
+             [x_1 : T_1 ← e_12]
+             do e_body)
 
-      E-fold-ind)
+       E-fold-ind)
 
    (~> (π x_1 (rcd ([x_i = e_i] ... [x_1 = e_1] [x_j = e_j] ...)))
-      e_1
-      E-π)
+       e_1
+       E-π)
         
    (--> ((e_i ...)
          ([e_j v_j] ...)

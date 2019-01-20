@@ -28,6 +28,31 @@
 
   (Γ ::= ([x : T] ...)))
 
+(define-judgment-form cfl-t
+  #:mode (comparable I I)
+  #:contract (comparable T T)
+
+  [---------------------- C-bool
+   (comparable Bool Bool)]
+
+  [-------------------- C-str
+   (comparable Str Str)]
+
+  [(comparable T_1 T_2)
+   -------------------------------- C-lst
+   (comparable (Lst T_1) (Lst T_2))]
+
+  [------------------------------ C-rcd-base
+   (comparable (Rcd ()) (Rcd ()))]
+
+  [(comparable T_1 T_2)
+   (comparable (Rcd ([x_i : T_i] ...))
+               (Rcd ([x_j : T_j] ... [x_k : T_k] ...)))
+   ---------------------------------------------------------------- C-rcd-ind
+   (comparable (Rcd ([x_1 : T_1] [x_i : T_i] ...))
+               (Rcd ([x_j : T_j] ... [x_1 : T_2] [x_k : T_k] ...)))]
+  )
+
 
 (define-judgment-form cfl-t
   #:mode (type I I I I O)
@@ -72,14 +97,10 @@
   [----------------------- T-false
    (type Γ ⊢ false : Bool)]
 
-  [(type Γ ⊢ e_1 : Str)
-   (type Γ ⊢ e_2 : Str)
-   ------------------------------ T-cmp-str
-   (type Γ ⊢ (e_1 == e_2) : Bool)]
-
-  [(type Γ ⊢ e_1 : Bool)
-   (type Γ ⊢ e_2 : Bool)
-   ------------------------------ T-cmp-bool
+  [(type Γ ⊢ e_1 : T_1)
+   (type Γ ⊢ e_2 : T_2)
+   (comparable T_1 T_2)
+   ------------------------------ T-cmp
    (type Γ ⊢ (e_1 == e_2) : Bool)]
 
   [(type Γ ⊢ e_1 : Bool)
