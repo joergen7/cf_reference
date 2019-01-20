@@ -67,23 +67,23 @@
 
    (~> ((nil T_1) == (nil T_2))
        true
-       E-cmp-base)
+       E-cmp-lst-base)
 
    (~> ((nil T_1) == (cons e_21 e_22))
        false
-       E-cmp-nil1)
+       E-cmp-lst-nil1)
 
    (~> ((cons e_11 e_12) == (nil T_2))
        false
-       E-cmp-nil2)
+       E-cmp-lst-nil2)
 
    (~> ((cons e_11 e_12) == (cons e_21 e_22))
        ((e_11 == e_21) ∧ (e_12 == e_22))
-       E-cmp-ind)
+       E-cmp-lst-ind)
 
    (~> ((rcd ()) == (rcd ()))
        true
-       E-rcd-base)
+       E-cmp-rcd-base)
 
    (~> (   (rcd ([x_1 = e_1] [x_i = e_i] ...))
         == (rcd ([x_j = e_j] ... [x_1 = e_2] [x_k = e_k] ...)))
