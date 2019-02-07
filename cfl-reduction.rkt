@@ -117,8 +117,8 @@
        E-for-base)
 
    (~> (for T_body ([x_i : T_i ← (cons e_i1 e_i2)] ...) do e_body)
-       (for T_body ([x_i : T_i ← e_i2] ...) do
-         (app (λ ([x_i : T_i] ...) → T_body (ntv e_body)) ([x_i = e_i1] ...)))
+       (cons (app (λ ([x_i : T_i] ...) → T_body (ntv e_body)) ([x_i = e_i1] ...))
+             (for T_body ([x_i : T_i ← e_i2] ...) do e_body))
        E-for-ind)
 
    (~> (fold [x_acc : T_acc = e_acc] [x_1 : T_1 ← (nil T_2)] do e_body)

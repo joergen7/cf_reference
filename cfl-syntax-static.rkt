@@ -116,6 +116,8 @@
   (test-equal (redex-match? cfl e (term (λ ([x : Str] [x : Str]) → Str (ntv x)))) #f)
   (test-equal (redex-match? cfl e (term (λ ([x : Str] [y : Str]) → Str (frn Bash "blub")))) #t)
   (test-equal (redex-match? cfl e (term (λ ([x : Str] [x : Str]) → Str (frn Bash "blub")))) #f)
+  (test-equal (redex-match? cfl e (term (λ ([x : Str]) → Str (ntv x)))) #t)
+  (test-equal (redex-match? cfl e (term (app (λ ([x : Str]) → Str (ntv x)) ([x = (str "bla")])))) #t)
   (test-equal (redex-match? cfl e (term (for Str ([x : Str ← l1] [y : Str ← l2]) do x))) #t)
   (test-equal (redex-match? cfl e (term (for Str ([x : Str ← l1] [x : Str ← l2]) do x))) #f)
   (test-equal (redex-match? cfl e (term (fold [x : Str = (str "0")] [y : Str ← l1] do x))) #t)
