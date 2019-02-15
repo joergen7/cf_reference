@@ -88,7 +88,7 @@
   ;; reduction-proj
   (define-term e20 (π b (rcd ([a = (str "ok")] [b = true]))))
   (define-term p20 (() () e20))
-  ; (traces cfl-> (term p20))
+  (traces cfl-> (term p20))
 
   
   )

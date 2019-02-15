@@ -57,7 +57,6 @@
          (E + e)
          (e + E)
          (for T ([x : T ← e] ... [x : T ← E] [x : T ← e] ...) do e)
-         (fold [x : T = E] [x : T ← e] do e)
          (fold [x : T = e] [x : T ← E] do e)
          (rcd ([x = e] ... [x = E] [x = e] ...))
          (π x E))
