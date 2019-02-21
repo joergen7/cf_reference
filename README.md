@@ -22,7 +22,7 @@ The previous [0.1.0 release](https://github.com/joergen7/cf_reference/releases/t
 
 ## System Requirements
 
-- [Racket](http://www.racket-lang.org)
+- [Racket](http://www.racket-lang.org) 7.0 or higher
 
 ## Resources
 
