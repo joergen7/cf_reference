@@ -6,6 +6,9 @@ This semantic reference defines an abstract syntax as a Redex language, a type s
 
 Note that this reference defines only the semantics of the interpreter up to the interpreter's side of a communication protocol with a distributed execution environment.
 
+## Rendering Reduction Traces
+
+In DrRacket open the file `main.rkt` and run it by pressing `F5`. Several popups appear illustrating the reduction traces of selected Cuneiform expressions.
 
 ## Running the Test Suite
 
