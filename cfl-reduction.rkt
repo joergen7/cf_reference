@@ -108,6 +108,12 @@
    (~> (if true then e_1 else e_2)  e_1 E-if-t)
    (~> (if false then e_1 else e_2) e_2 E-if-f)
 
+   (~> (hd (nil T_1) e_2)        e_2  E-hd-nil)
+   (~> (hd (cons e_11 e_12) e_2) e_11 E-hd-cons)
+
+   (~> (tl (nil T_1) e_2)        e_2  E-tl-nil)
+   (~> (tl (cons e_11 e_12) e_2) e_12 E-tl-cons)
+
    (~> ((nil T_1) + e_2)        e_2                      E-append-base)
    (~> ((cons e_11 e_12) + e_2) (cons e_11 (e_12 + e_2)) E-append-ind)
 

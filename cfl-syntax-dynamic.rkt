@@ -54,6 +54,8 @@
          (if E then e else e)
          (cons E e)
          (cons e E)
+         (hd E e)
+         (tl E e)
          (E + e)
          (e + E)
          (for T ([x : T ← e] ... [x : T ← E] [x : T ← e] ...) do e)

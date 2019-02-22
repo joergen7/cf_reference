@@ -45,6 +45,8 @@
          (if e then e else e)
          (nil T)
          (cons e e)
+         (hd e e)
+         (tl e e)
          (e + e)
          (for T ([x_!_ : T ← e] ...) do e)
          (fold [x_!_ : T = e] [x_!_ : T ← e] do e)
