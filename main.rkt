@@ -62,33 +62,37 @@
   (define-term e16 (app (λ ([x : Str]) → Str (ntv x)) ([x = (str "bla")])))
   (define-term p16 (() () e16))
   (traces cfl-> (term p16))
-  
-  ;; reduction-append
-  (define-term e17 (  (cons (str "a") (cons (str "b") (nil Str)))
-                    + (cons (str "c") (cons (str "d") (nil Str)))))
+
+  ;; reduction-hd
+  (define-term e17 (hd (cons (str "1") (cons (str "2") (nil Str)))
+                       (error "empty list" : Str)))
   (define-term p17 (() () e17))
   (traces cfl-> (term p17))
-
-  ;; reduction-for
-  (define-term e18 (for Bool
-                        ([x : Bool ← (cons true (cons false (cons false (nil Bool))))])
-                    do  (¬ x)))
+  
+  ;; reduction-append
+  (define-term e18 (  (cons (str "a") (cons (str "b") (nil Str)))
+                    + (cons (str "c") (cons (str "d") (nil Str)))))
   (define-term p18 (() () e18))
   (traces cfl-> (term p18))
 
-  ;; reduction-fold
-  (define-term e19 (fold [acc : (Lst Str) = (nil Str)]
-                         [x : Str ← (cons (str "a") (cons (str "b") (nil Str)))]
-                    do   (cons x acc)))
+  ;; reduction-for
+  (define-term e19 (for Bool
+                        ([x : Bool ← (cons true (cons false (cons false (nil Bool))))])
+                    do  (¬ x)))
   (define-term p19 (() () e19))
   (traces cfl-> (term p19))
 
-
-  
-  ;; reduction-proj
-  (define-term e20 (π b (rcd ([a = (str "ok")] [b = true]))))
+  ;; reduction-fold
+  (define-term e20 (fold [acc : (Lst Str) = (nil Str)]
+                         [x : Str ← (cons (str "a") (cons (str "b") (nil Str)))]
+                    do   (cons x acc)))
   (define-term p20 (() () e20))
   (traces cfl-> (term p20))
+
+  ;; reduction-proj
+  (define-term e21 (π b (rcd ([a = (str "ok")] [b = true]))))
+  (define-term p21 (() () e21))
+  (traces cfl-> (term p21))
 
   
   )
