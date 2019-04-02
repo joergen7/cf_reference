@@ -147,32 +147,32 @@
        E-π)
         
    (--> ((e_i ...)
-         ([e_j v_j] ...)
+         ([e_j1 e_j2] ...)
          (in-hole E (app (λ ([x_k : T_k] ...) → T_ret (frn l s))
                          ([x_l = v_l] ...))))
 
         (((app (λ ([x_l : T_k] ...) → T_ret (frn l s)) ([x_l = v_l] ...))
           e_i ...)
-         ([e_j v_j] ...)
+         ([e_j1 e_j2] ...)
          (in-hole E (fut (app (λ ([x_k : T_k] ...) → T_ret (frn l s))
                               ([x_l = v_l] ...)))))
         E-σ)
 
    (--> ((e_i ...)
-         ([e_j v_j] ... [e_1 v_1] [e_k v_k] ...)
+         ([e_j1 e_j2] ... [e_11 e_12] [e_k1 e_k2] ...)
          (in-hole E (fut e_1)))
 
         ((e_i ...)
-         ([e_j v_j] ... [e_1 v_1] [e_k v_k] ...)
+         ([e_j1 e_j2] ... [e_11 e_12] [e_k1 e_k2] ...)
          (in-hole E v_1))
 
         E-ρ)
 
    (--> ((e_i ...)
-         ([e_j v_j] ...)
+         ([e_j1 e_j2] ...)
          (in-hole E (error s : T)))
 
-        (() ([e_j v_j] ...) (error s : T))
+        (() ([e_j1 e_j2] ...) (error s : T))
 
         (side-condition
          (not (and (equal? (term E) (term hole))
@@ -183,8 +183,8 @@
    
    with
 
-   ((--> ((e_i ...) ([e_j v_j] ...) (in-hole E a))
-         ((e_i ...) ([e_j v_j] ...) (in-hole E b)))
+   ((--> ((e_i ...) ([e_j1 e_j2] ...) (in-hole E a))
+         ((e_i ...) ([e_j1 e_j2] ...) (in-hole E b)))
 
     (~> a b))))
 
