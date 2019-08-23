@@ -28,8 +28,8 @@
 (define-language cfl
 
   (e ::= x
-         (λ ([x_!_ : T] ...) → T (ntv e))
-         (λ ([x_!_ : T] ...) → T (frn l s))
+         (λ ([x_!_ : T] ...) (ntv e))
+         (λ ([x_!_ : T] ...) (frn x T l s))
          (app e ([x = e] ...))
          (fix e)
          (fut e)
@@ -78,9 +78,9 @@
          (Rcd ([x : T] ...)))
 
   #:binding-forms
-  (λ ([x : T] ...) → T_ret (ntv e #:refers-to (shadow x ...)))
+  (λ ([x : T] ...) (ntv e #:refers-to (shadow x ...)))
   (app e_f #:refers-to (shadow x ...) ([x = e] ...))
-  (for T_body ([x : T ← e] ...) do e_body #:refers-to (shadow x ...))
+  (for T_ret ([x : T ← e] ...) do e_body #:refers-to (shadow x ...))
   (fold [x_acc : T_acc = e_acc] [x_1 : T_1 ← e_1] do e_body #:refers-to (shadow x_acc x_1))
 )
 
@@ -95,13 +95,13 @@
   (test-equal (redex-match? cfl T (term Bool)) #t)
 
   (test-equal (alpha-equivalent? cfl
-                                 (term (λ ([x : Str]) → Str (ntv x)))
-                                 (term (λ ([y : Str]) → Str (ntv y))))
+                                 (term (λ ([x : Str]) (ntv x)))
+                                 (term (λ ([y : Str]) (ntv y))))
               #t)
 
   (test-equal (alpha-equivalent? cfl
-                                 (term (app (λ ([x : Str]) → Str (ntv x)) ([x = (str "blub")])))
-                                 (term (app (λ ([y : Str]) → Str (ntv y)) ([y = (str "blub")]))))
+                                 (term (app (λ ([x : Str]) (ntv x)) ([x = (str "blub")])))
+                                 (term (app (λ ([y : Str]) (ntv y)) ([y = (str "blub")]))))
               #t)
 
   (test-equal (alpha-equivalent? cfl
@@ -114,12 +114,12 @@
                                  (term (fold [a : Str = (str "bla")] [b : Str ← (nil Str)] do a)))
               #t)
 
-  (test-equal (redex-match? cfl e (term (λ ([x : Str] [y : Str]) → Str (ntv x)))) #t)
-  (test-equal (redex-match? cfl e (term (λ ([x : Str] [x : Str]) → Str (ntv x)))) #f)
-  (test-equal (redex-match? cfl e (term (λ ([x : Str] [y : Str]) → Str (frn Bash "blub")))) #t)
-  (test-equal (redex-match? cfl e (term (λ ([x : Str] [x : Str]) → Str (frn Bash "blub")))) #f)
-  (test-equal (redex-match? cfl e (term (λ ([x : Str]) → Str (ntv x)))) #t)
-  (test-equal (redex-match? cfl e (term (app (λ ([x : Str]) → Str (ntv x)) ([x = (str "bla")])))) #t)
+  (test-equal (redex-match? cfl e (term (λ ([x : Str] [y : Str]) (ntv x)))) #t)
+  (test-equal (redex-match? cfl e (term (λ ([x : Str] [x : Str]) (ntv x)))) #f)
+  (test-equal (redex-match? cfl e (term (λ ([x : Str] [y : Str]) (frn f Str Bash "blub")))) #t)
+  (test-equal (redex-match? cfl e (term (λ ([x : Str] [x : Str]) (frn f Str Bash "blub")))) #f)
+  (test-equal (redex-match? cfl e (term (λ ([x : Str]) (ntv x)))) #t)
+  (test-equal (redex-match? cfl e (term (app (λ ([x : Str]) (ntv x)) ([x = (str "bla")])))) #t)
   (test-equal (redex-match? cfl e (term (for Str ([x : Str ← l1] [y : Str ← l2]) do x))) #t)
   (test-equal (redex-match? cfl e (term (for Str ([x : Str ← l1] [x : Str ← l2]) do x))) #f)
   (test-equal (redex-match? cfl e (term (fold [x : Str = (str "0")] [y : Str ← l1] do x))) #t)

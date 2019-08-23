@@ -67,12 +67,12 @@
   [(type ([x_j : T_j] ... [x_i : T_i] ...) ⊢ e_body : T_ret)
    --------------------------------------------------------- T-λ-ntv
    (type ([x_i : T_i] ...)
-       ⊢ (λ ([x_j : T_j] ...) → T_ret (ntv e_body))
+       ⊢ (λ ([x_j : T_j] ...) (ntv e_body))
        : (Fn ([x_j : T_j] ...) → T_ret))]
 
   [--------------------------------------------- T-λ-frn
    (type Γ
-       ⊢ (λ ([x_i : T_i] ...) → T_ret (frn l s))
+       ⊢ (λ ([x_i : T_i] ...) (frn x T_ret l s))
        : (Fn ([x_i : T_i] ...) → T_ret))]
 
   [(type Γ ⊢ e_f : (Fn ([x_i : T_i] ...) → T_ret))
@@ -193,9 +193,9 @@
   (test-judgment-holds (type ([x : Str] [y : File]) ⊢ x : Str))
   (test-judgment-holds (type ([y : File] [x : Str]) ⊢ x : Str))
   (test-equal (judgment-holds (type ([x : Str] [x : File]) ⊢ x : T) T) '(Str))
-  (test-judgment-holds (type () ⊢ (λ ([x : Str]) → Str (ntv x)) : (Fn ([x : Str]) → Str)))
-  (test-equal (judgment-holds (type () ⊢ (λ ([x : Str]) → Str (ntv (file "bla"))) : T) T) '())
-  (test-judgment-holds (type () ⊢ (λ ([x : Str]) → Str (frn Bash "blub")) : (Fn ([x : Str]) → Str)))
+  (test-judgment-holds (type () ⊢ (λ ([x : Str]) (ntv x)) : (Fn ([x : Str]) → Str)))
+  (test-judgment-holds (type () ⊢ (λ ([x : Str]) (ntv (file "bla"))) : (Fn ([x : Str]) → File)))
+  (test-judgment-holds (type () ⊢ (λ ([x : Str]) (frn f Str Bash "blub")) : (Fn ([x : Str]) → Str)))
   (test-judgment-holds (type () ⊢ (str "blub") : Str))
   (test-judgment-holds (type () ⊢ (file "bla") : File))
   (test-judgment-holds (type () ⊢ true : Bool))

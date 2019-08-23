@@ -31,23 +31,23 @@
    cfl-d
    #:domain p
 
-   (~> (app (λ () → T_ret (ntv e_body)) ())
+   (~> (app (λ () (ntv e_body)) ())
       e_body
       E-β-base)
 
-   (~> (app (λ ([x_1 : T_1] [x_i : T_i] ...) → T_ret (ntv e_body))
+   (~> (app (λ ([x_1 : T_1] [x_i : T_i] ...) (ntv e_body))
            ([x_2 = e_1] [x_j = e_j] ...))
 
-      (app (λ ([x_i : T_i] ...) → T_ret (ntv (substitute e_body x_1 e_1)))
+      (app (λ ([x_i : T_i] ...) (ntv (substitute e_body x_1 e_1)))
            ([x_j = e_j] ...))
 
       E-β-ind)
 
-   (~> (fix (λ ([x_f : T_f] [x_i : T_i] ...) → T_ret (ntv e_body)))
+   (~> (fix (λ ([x_f : T_f] [x_i : T_i] ...) (ntv e_body)))
 
         (λ ([x_i : T_i] ...)
           (ntv (app (λ ([x_f : T_f]) (ntv e_body))
-                    ([x_f = (fix (λ ([x_f : T_f] [x_i : T_i] ...) → T_ret (ntv e_body)))]))))
+                    ([x_f = (fix (λ ([x_f : T_f] [x_i : T_i] ...) (ntv e_body)))]))))
 
        E-fix)
 
@@ -123,7 +123,7 @@
        E-for-base)
 
    (~> (for T_body ([x_i : T_i ← (cons e_i1 e_i2)] ...) do e_body)
-       (cons (app (λ ([x_i : T_i] ...) → T_body (ntv e_body)) ([x_i = e_i1] ...))
+       (cons (app (λ ([x_i : T_i] ...) (ntv e_body)) ([x_i = e_i1] ...))
              (for T_body ([x_i : T_i ← e_i2] ...) do e_body))
        E-for-ind)
 
@@ -135,7 +135,7 @@
              [x_1 : T_1 ← (cons e_11 e_12)]
              do e_body)
       
-       (fold [x_acc : T_acc = (app (λ ([x_acc : T_acc] [x_1 : T_1]) → T_acc (ntv e_body))
+       (fold [x_acc : T_acc = (app (λ ([x_acc : T_acc] [x_1 : T_1]) (ntv e_body))
                                    ([x_acc = e_acc] [x_1 = e_11]))]
              [x_1 : T_1 ← e_12]
              do e_body)
@@ -148,13 +148,13 @@
         
    (--> ((e_i ...)
          ([e_j1 e_j2] ...)
-         (in-hole E (app (λ ([x_k : T_k] ...) → T_ret (frn l s))
+         (in-hole E (app (λ ([x_k : T_k] ...) (frn x T_ret l s))
                          ([x_l = v_l] ...))))
 
-        (((app (λ ([x_l : T_k] ...) → T_ret (frn l s)) ([x_l = v_l] ...))
+        (((app (λ ([x_l : T_k] ...) (frn x T_ret l s)) ([x_l = v_l] ...))
           e_i ...)
          ([e_j1 e_j2] ...)
-         (in-hole E (fut (app (λ ([x_k : T_k] ...) → T_ret (frn l s))
+         (in-hole E (fut (app (λ ([x_k : T_k] ...) (frn x T_ret l s))
                               ([x_l = v_l] ...)))))
         E-σ)
 
@@ -194,12 +194,12 @@
 (module+ test
 
   (define-term str1 (str "blub"))
-  (define-term str2 (app (λ () → Str (ntv str1)) ()))
+  (define-term str2 (app (λ () (ntv str1)) ()))
 
-  (define-term frn-lam0 (λ () → Str (frn Bash "blub")))
+  (define-term frn-lam0 (λ () (frn f Str Bash "blub")))
   (define-term frn-app0 (app frn-lam0 ()))
 
-  (define-term frn-lam1 (λ ([x : Str]) → Str (frn Bash "blub")))
+  (define-term frn-lam1 (λ ([x : Str]) (frn f Str Bash "blub")))
   (define-term frn-app1 (app frn-lam1 ([x = (str "bla")])))
   
   (test-->

@@ -38,7 +38,7 @@
 
   ;; reduction-error02
   (define-term e3
-    (app (λ ([x : Bool]) → Str (ntv (str "blub")))
+    (app (λ ([x : Bool]) (ntv (str "blub")))
          ([x = (error "kaboom" : Bool)])))
   (define-term p3 (() () e3))
   (traces cfl-> (term p3))
@@ -59,7 +59,7 @@
   (traces cfl-> (term p6))
 
   ;; reduction-app
-  (define-term e16 (app (λ ([x : Str]) → Str (ntv x)) ([x = (str "bla")])))
+  (define-term e16 (app (λ ([x : Str]) (ntv x)) ([x = (str "bla")])))
   (define-term p16 (() () e16))
   (traces cfl-> (term p16))
 

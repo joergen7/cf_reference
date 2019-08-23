@@ -29,8 +29,8 @@
 
 (define-extended-language cfl-d cfl
 
-  (v ::= (λ ([x_!_ : T] ...) → T (ntv e))
-         (λ ([x_!_ : T] ...) → T (frn l s))
+  (v ::= (λ ([x_!_ : T] ...) (ntv e))
+         (λ ([x_!_ : T] ...) (frn x T l s))
          (str s)
          (file s)
          true
@@ -41,7 +41,7 @@
 
   (E ::= hole
          (app E ([x = e] ...))
-         (app (λ ([x : T] ...) → T (frn l s)) ([x = e] ... [x = E] [x = e] ...))
+         (app (λ ([x : T] ...) (frn x T l s)) ([x = e] ... [x = E] [x = e] ...))
          (fix E)
          (E == e)
          (e == E)
@@ -72,10 +72,10 @@
 
 (module+ test
 
-  (define-term frn-lam1 (λ ([x : Str]) → Str (frn Bash "blub")))
+  (define-term frn-lam1 (λ ([x : Str]) (frn f Str Bash "blub")))
   (define-term frn-app1 (app frn-lam1 ([x = (str "bla")])))
   
-  (define-term frn-lam2 (λ ([y : Str]) → Str (frn Bash "blub")))
+  (define-term frn-lam2 (λ ([y : Str]) (frn f Str Bash "blub")))
   (define-term frn-app2 (app frn-lam2 ([y = (str "bla")])))
 
   (test-equal (alpha-equivalent? cfl-d (term (() () frn-app1))
