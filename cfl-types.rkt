@@ -29,30 +29,56 @@
   (Γ ::= ([x : T] ...)))
 
 (define-judgment-form cfl-t
-  #:mode (comparable I I)
-  #:contract (comparable T T)
+  #:mode (comparable I)
+  #:contract (comparable T)
 
-  [---------------------- C-bool
-   (comparable Bool Bool)]
+  [----------------- C-bool
+   (comparable Bool)]
 
-  [-------------------- C-str
-   (comparable Str Str)]
+  [---------------- C-str
+   (comparable Str)]
 
-  [(comparable T_1 T_2)
-   -------------------------------- C-lst
-   (comparable (Lst T_1) (Lst T_2))]
+  [(comparable T_1)
+   ---------------------- C-lst
+   (comparable (Lst T_1))]
 
-  [------------------------------ C-rcd-base
-   (comparable (Rcd ()) (Rcd ()))]
-
-  [(comparable T_1 T_2)
-   (comparable (Rcd ([x_i : T_i] ...))
-               (Rcd ([x_j : T_j] ... [x_k : T_k] ...)))
-   ---------------------------------------------------------------- C-rcd-ind
-   (comparable (Rcd ([x_1 : T_1] [x_i : T_i] ...))
-               (Rcd ([x_j : T_j] ... [x_1 : T_2] [x_k : T_k] ...)))]
+  [(comparable T_i) ...
+   ------------------------------------ C-rcd-base
+   (comparable (Rcd ([x_i : T_i] ...)))]
   )
 
+(define-judgment-form cfl-t
+  #:mode (equiv I I)
+  #:contract (equiv T T)
+
+  [------------
+   (equiv Str Str)]
+
+  [--------------
+   (equiv File File)]
+
+  [--------------
+   (equiv Bool Bool)]
+
+  [(equiv T_i T_j) ...
+   (equiv T_ret1 T_ret2)
+   --------------------------------------------------------------------
+   (equiv (Fn ([x_i : T_i] ...) → T_ret1) (Fn ([x_i : T_j] ...) → T_ret2))]
+
+  [(equiv T_1 T_2)
+   ------------------------
+   (equiv (Lst T_1) (Lst T_2))]
+
+  [----------------------
+   (equiv (Rcd ()) (Rcd ()))]
+
+  [(equiv T_1 T_2)
+   (equiv (Rcd ([x_i : T_i] ...))
+          (Rcd ([x_j : T_j] ... [x_k : T_k] ...)))
+   ----------------------------------------------------------------
+   (equiv (Rcd ([x_1 : T_1] [x_i : T_i] ...))
+          (Rcd ([x_j : T_j] ... [x_1 : T_2] [x_k : T_k] ...)))]
+  )
 
 (define-judgment-form cfl-t
   #:mode (type I I I I O)
@@ -76,14 +102,17 @@
        : (Fn ([x_i : T_i] ...) → T_ret))]
 
   [(type Γ ⊢ e_f : (Fn ([x_i : T_i] ...) → T_ret))
-   (type Γ ⊢ e_i : T_i) ...
+   (type Γ ⊢ e_i : T_j) ...
+   (equiv T_i T_j) ...
    ---------------------------------------------- T-app
    (type Γ ⊢ (app e_f ([x_i = e_i] ...)) : T_ret)]
 
-  [(type Γ ⊢ e_f : (Fn ([x_f : (Fn ([x_i : T_i] ...) → T_ret)]
-                        [x_i : T_i] ...) → T_ret))
+  [(type Γ ⊢ e_f : (Fn ([x_f : (Fn ([x_i : T_i] ...) → T_ret1)]
+                        [x_i : T_j] ...) → T_ret2))
+   (equiv T_i T_j) ...
+   (equiv T_ret1 T_ret2)
    ----------------------------------------------------------- T-fix
-   (type Γ ⊢ (fix e_f) : (Fn ([x_i : T_i] ...) → T_ret))]
+   (type Γ ⊢ (fix e_f) : (Fn ([x_i : T_i] ...) → T_ret1))]
 
   [------------------------ T-str
    (type Γ ⊢ (str s) : Str)]
@@ -99,7 +128,8 @@
 
   [(type Γ ⊢ e_1 : T_1)
    (type Γ ⊢ e_2 : T_2)
-   (comparable T_1 T_2)
+   (comparable T_1)
+   (equiv T_1 T_2)
    ------------------------------ T-cmp
    (type Γ ⊢ (e_1 == e_2) : Bool)]
 
@@ -122,53 +152,62 @@
    (type Γ ⊢ (isnil e_1) : Bool)]
 
   [(type Γ ⊢ e_1 : Bool)
-   (type Γ ⊢ e_2 : T_23)
-   (type Γ ⊢ e_3 : T_23)
+   (type Γ ⊢ e_2 : T_l)
+   (type Γ ⊢ e_3 : T_r)
+   (equiv T_l T_r)
    -------------------------------------------- T-if
-   (type Γ ⊢ (if e_1 then e_2 else e_3) : T_23)]
+   (type Γ ⊢ (if e_1 then e_2 else e_3) : T_l)]
 
   [-------------------------------- T-nil
    (type Γ ⊢ (nil T_1) : (Lst T_1))]
 
-  [(type Γ ⊢ e_1 : T_12)
-   (type Γ ⊢ e_2 : (Lst T_12))
+  [(type Γ ⊢ e_1 : T_l)
+   (type Γ ⊢ e_2 : (Lst T_r))
+   (equiv T_l T_r)
    -------------------------------------- T-cons
-   (type Γ ⊢ (cons e_1 e_2) : (Lst T_12))]
+   (type Γ ⊢ (cons e_1 e_2) : (Lst T_l))]
 
-  [(type Γ ⊢ e_1 : (Lst T_12))
-   (type Γ ⊢ e_2 : T_12)
+  [(type Γ ⊢ e_1 : (Lst T_l))
+   (type Γ ⊢ e_2 : T_r)
+   (equiv T_l T_r)
    ----------------------------- T-hd
-   (type Γ ⊢ (hd e_1 e_2) : T_12)]
+   (type Γ ⊢ (hd e_1 e_2) : T_l)]
 
-  [(type Γ ⊢ e_1 : (Lst T_12))
-   (type Γ ⊢ e_2 : (Lst T_12))
+  [(type Γ ⊢ e_1 : (Lst T_l))
+   (type Γ ⊢ e_2 : (Lst T_r))
+   (equiv T_l T_r)
    ----------------------------------- T-tl
-   (type Γ ⊢ (tl e_1 e_2) : (Lst T_12))]
+   (type Γ ⊢ (tl e_1 e_2) : (Lst T_l))]
 
-  [(type Γ ⊢ e_1 : (Lst T_12))
-   (type Γ ⊢ e_2 : (Lst T_12))
+  [(type Γ ⊢ e_1 : (Lst T_l))
+   (type Γ ⊢ e_2 : (Lst T_r))
+   (equiv T_l T_l)
    ----------------------------------- T-append
-   (type Γ ⊢ (e_1 + e_2) : (Lst T_12))]
+   (type Γ ⊢ (e_1 + e_2) : (Lst T_l))]
 
   [(type ([x_i : T_i] ...) ⊢ e_j : (Lst T_j)) ...
    (type ([x_j : T_j] ... [x_i : T_i] ...)
        ⊢ e_body
-       : T_body)
+       : T_body2)
+   (equiv T_body1 T_body2)
    ------------------------------------------------------ T-for
    (type ([x_i : T_i] ...)
-       ⊢ (for T_body ([x_j : T_j ← e_j] ...) do e_body)
-       : (Lst T_body))]
+       ⊢ (for T_body1 ([x_j : T_j ← e_j] ...) do e_body)
+       : (Lst T_body1))]
 
-  [(type ([x_i : T_i] ...) ⊢ e_acc : T_acc)
-   (type ([x_i : T_i] ...) ⊢ e_1 : (Lst T_1))
-   (type ([x_acc : T_acc] [x_1 : T_1] [x_i : T_i] ...)
+  [(type ([x_i : T_i] ...) ⊢ e_acc : T_acc2)
+   (type ([x_i : T_i] ...) ⊢ e_lst : (Lst T_lst2))
+   (type ([x_acc : T_acc1] [x_lst : T_lst1] [x_i : T_i] ...)
        ⊢ e_body
-       : T_acc)
+       : T_body)
+   (equiv T_acc1 T_acc2)
+   (equiv T_acc1 T_body)
+   (equiv T_lst1 T_lst2)
    --------------------------------------------------- T-fold
    (type ([x_i : T_i] ...)
-       ⊢ (fold [x_acc : T_acc = e_acc]
-               [x_1 : T_1 ← e_1] do e_body)
-       : T_acc)]
+       ⊢ (fold [x_acc : T_acc1 = e_acc]
+               [x_lst : T_lst1 ← e_lst] do e_body)
+       : T_acc1)]
 
   [(type Γ ⊢ e_i : T_i) ...
    ------------------------------ T-rcd
