@@ -165,7 +165,7 @@
    (type Γ ⊢ e_2 : (Lst T_r))
    (t-equiv T_l T_r)
    -------------------------------------- T-cons
-   (type Γ ⊢ (cons e_1 e_2) : (Lst T_l))]
+   (type Γ ⊢ (cons e_1 e_2) : (Lst T_r))]
 
   [(type Γ ⊢ e_1 : (Lst T_l))
    (type Γ ⊢ e_2 : T_r)
