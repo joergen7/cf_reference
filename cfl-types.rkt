@@ -1,3 +1,5 @@
+#lang racket/base
+
 ;;-----------------------------------------------------------------------------
 ;;
 ;; Semantic reference of the Cuneiform distributed programming
@@ -19,7 +21,6 @@
 ;;
 ;;-----------------------------------------------------------------------------
 
-#lang racket/base
 
 (require redex
          "cfl-syntax-static.rkt")
@@ -226,6 +227,9 @@
    (type Γ ⊢ (error s : T_1) : T_1)]
   
   )
+
+(module+ main
+  (render-judgment-form type))
 
 (module+ test
   (test-equal (judgment-holds (type () ⊢ x : T) T) '())

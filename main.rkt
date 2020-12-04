@@ -1,3 +1,5 @@
+#lang racket/base
+
 ;;-----------------------------------------------------------------------------
 ;;
 ;; Semantic reference of the Cuneiform distributed programming
@@ -19,7 +21,6 @@
 ;;
 ;;-----------------------------------------------------------------------------
 
-#lang racket/base
 
 (module+ main
 
